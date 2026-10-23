@@ -30,6 +30,29 @@ pub fn pick<I: SizedImage>(images: &[I], target: u32) -> Option<String> {
         .map(|i| i.src().to_string())
 }
 
+/// Home carousel images come as bare file names ("<uuid>.png"); the web app
+/// serves them from static.crunchyroll.com/fms. Full URLs pass through.
+pub fn fms_url(kind: FmsKind, name: &str) -> Option<String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return None;
+    }
+    if name.starts_with("http://") || name.starts_with("https://") {
+        return Some(name.to_string());
+    }
+    let id = name.rsplit_once('.').map(|(a, _)| a).unwrap_or(name);
+    Some(match kind {
+        FmsKind::Landscape => format!("https://static.crunchyroll.com/fms/landscape_large/1920x1080/94/png/{id}.webp"),
+        FmsKind::Logo => format!("https://static.crunchyroll.com/fms/logo/85/png/{id}.webp"),
+    })
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum FmsKind {
+    Landscape,
+    Logo,
+}
+
 #[derive(Clone, Debug)]
 pub struct DecodedImage {
     pub width: u32,
@@ -130,6 +153,17 @@ mod tests {
         assert_eq!(pick(&imgs, 100).as_deref(), Some("a"));
         assert_eq!(pick(&imgs, 4000).as_deref(), Some("b"));
         assert_eq!(pick::<Img>(&[], 100), None);
+    }
+
+    #[test]
+    fn fms_urls() {
+        assert_eq!(
+            fms_url(FmsKind::Landscape, "a5bac8ac-8bf6.png").as_deref(),
+            Some("https://static.crunchyroll.com/fms/landscape_large/1920x1080/94/png/a5bac8ac-8bf6.webp")
+        );
+        assert_eq!(fms_url(FmsKind::Logo, "x.png").as_deref(), Some("https://static.crunchyroll.com/fms/logo/85/png/x.webp"));
+        assert_eq!(fms_url(FmsKind::Logo, "https://a/b.png").as_deref(), Some("https://a/b.png"));
+        assert_eq!(fms_url(FmsKind::Logo, " "), None);
     }
 
     #[test]

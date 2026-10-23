@@ -366,6 +366,7 @@ export component AppWindow inherits Window {
             PageSlot {
                 active: page == "home" && !detail-open;
                 HomePage {
+                    active: page == "home" && !detail-open && screen == "main";
                     heroes: root.heroes;
                     rows: root.rows;
                     loading: root.home-loading;

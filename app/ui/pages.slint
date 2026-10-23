@@ -1,6 +1,6 @@
 ﻿import { Theme, Icons } from "theme.slint";
 import { CardData, RowData, HeroData, SeasonData, EpisodeData, DetailData, ProfileData, CalendarDayData, CalendarItemData, ListData, GenreData } from "data.slint";
-import { Skeleton, Spinner, PrimaryButton, GhostButton, IconButton, Chip, TextField, LazyImage, PosterCard, WideCard, CardRow, RowSkeleton, SectionTitle } from "components.slint";
+import { Skeleton, Spinner, BrandLoader, PrimaryButton, GhostButton, IconButton, Chip, TextField, LazyImage, PosterCard, WideCard, CardRow, SectionTitle } from "components.slint";
 
 // ------------------------------------------------------------------ helpers
 
@@ -35,16 +35,8 @@ export component CardGrid inherits Rectangle {
 
 export component GridSkeleton inherits Rectangle {
     in property <bool> wide: false;
-    property <length> gap: 16px;
-    property <length> w: wide ? 280px : 176px;
-    property <int> cols: max(1, floor((root.width - Theme.gutter * 2 + gap) / (w + gap)));
-    height: 2 * ((wide ? w * 9 / 16 : w * 1.5) + 86px);
-    for i in cols * 2: Skeleton {
-        x: Theme.gutter + mod(i, cols) * (w + gap);
-        y: floor(i / cols) * ((wide ? w * 9 / 16 : w * 1.5) + 86px);
-        width: w;
-        height: wide ? w * 9 / 16 : w * 1.5;
-    }
+    height: 320px;
+    BrandLoader { }
 }
 
 export component EmptyState inherits VerticalLayout {
@@ -448,39 +440,64 @@ export component ProfilesPage inherits Rectangle {
 
 // --------------------------------------------------------------------- home
 
+// Home carousel in the Crunchyroll web style: full-bleed art, series logo,
+// synopsis, buttons, progress bars that fill until the next slide.
 component Hero inherits Rectangle {
     in property <[HeroData]> heroes;
     in-out property <int> index: 0;
+    in property <bool> active: true;
     callback open(string);
     callback play(string);
+    property <float> progress: 0;
+    property <duration> slide: 8s;
+    property <bool> hovered: hover.has-hover;
     clip: true;
     background: Theme.bg;
+
+    function go(i: int) {
+        root.index = mod(i + heroes.length, heroes.length);
+        root.progress = 0;
+    }
+
+    hover := TouchArea { }
+
     for h[i] in heroes: Rectangle {
-        opacity: i == index ? 1 : 0;
-        animate opacity { duration: 700ms; easing: Theme.ease-in-out; }
-        visible: self.opacity > 0;
-        LazyImage {
-            source: h.image;
-            loaded: h.has-image;
-            radius: 0;
-            width: parent.width;
+        property <bool> current: i == index;
+        opacity: current ? 1 : 0;
+        animate opacity { duration: 800ms; easing: Theme.ease-in-out; }
+        visible: self.opacity > 0.001;
+        // art, anchored to the right like the web carousel
+        Rectangle {
+            x: parent.width * 0.18;
+            width: parent.width * 0.82;
             height: parent.height;
-            x: 0;
+            LazyImage {
+                source: h.image;
+                loaded: h.has-image;
+                radius: 0;
+            }
         }
-        Rectangle { background: @linear-gradient(90deg, #000000F2 0%, #000000B3 30%, #00000000 65%); }
-        Rectangle { background: @linear-gradient(0deg, #000000 0%, #00000000 45%); }
+        Rectangle { background: @linear-gradient(90deg, #000000 0%, #000000 18%, #000000D9 32%, #00000000 62%); }
+        Rectangle { background: @linear-gradient(0deg, #000000 0%, #000000B3 18%, #00000000 48%); }
+        Rectangle {
+            height: 140px;
+            y: 0;
+            background: @linear-gradient(180deg, #000000A6 0%, #00000000 100%);
+        }
         VerticalLayout {
-            x: Theme.gutter;
-            y: parent.height * 0.22;
-            width: min(560px, parent.width * 0.45);
-            height: parent.height * 0.62;
-            spacing: 16px;
-            alignment: start;
+            x: Theme.gutter + (current ? 0px : -24px);
+            animate x { duration: 700ms; easing: Theme.ease; }
+            y: parent.height * 0.12;
+            width: min(520px, parent.width * 0.42);
+            height: parent.height - 200px - parent.height * 0.12;
+            spacing: 18px;
+            alignment: end;
             if h.has-logo: Image {
                 source: h.logo;
-                height: 120px;
+                height: 150px;
                 image-fit: contain;
                 horizontal-alignment: left;
+                vertical-alignment: bottom;
             }
             if !h.has-logo: Text {
                 text: h.title;
@@ -492,18 +509,19 @@ component Hero inherits Rectangle {
             }
             Text {
                 text: h.description;
-                color: #E2E2E2;
+                color: #E6E6E6;
                 font-family: Theme.font;
                 font-size: Theme.fs-md;
                 wrap: word-wrap;
                 overflow: elide;
-                max-height: 84px;
+                height: 66px;
             }
             HorizontalLayout {
                 spacing: 12px;
                 alignment: start;
+                padding-top: 4px;
                 PrimaryButton {
-                    text: "ASSISTIR";
+                    text: "COMEÇAR A ASSISTIR";
                     icon: Icons.play;
                     has-icon: true;
                     clicked => { root.play(h.series-id); }
@@ -515,29 +533,63 @@ component Hero inherits Rectangle {
             }
         }
     }
-    // dots
+
+    // side arrows on hover
+    if heroes.length > 1: IconButton {
+        x: 12px;
+        y: (parent.height - self.height) / 2 - 30px;
+        size: 48px;
+        icon-size: 30px;
+        opacity: hovered ? 1 : 0;
+        animate opacity { duration: Theme.normal; }
+        icon: Icons.chevron-left;
+        clicked => { root.go(root.index - 1); }
+    }
+    if heroes.length > 1: IconButton {
+        x: parent.width - self.width - 12px;
+        y: (parent.height - self.height) / 2 - 30px;
+        size: 48px;
+        icon-size: 30px;
+        opacity: hovered ? 1 : 0;
+        animate opacity { duration: Theme.normal; }
+        icon: Icons.chevron-right;
+        clicked => { root.go(root.index + 1); }
+    }
+
+    // progress bars
     HorizontalLayout {
         x: Theme.gutter;
-        y: parent.height - 120px;
-        height: 6px;
+        y: parent.height - 160px;
+        height: 4px;
         spacing: 8px;
         alignment: start;
         for h[i] in heroes: Rectangle {
-            width: i == index ? 28px : 8px;
-            height: 6px;
-            border-radius: 3px;
-            background: i == index ? Theme.orange : #ffffff55;
-            animate width, background { duration: Theme.normal; easing: Theme.ease; }
+            width: i == index ? 56px : 26px;
+            animate width { duration: Theme.normal; easing: Theme.ease; }
+            height: 4px;
+            border-radius: 2px;
+            background: #ffffff40;
+            clip: true;
+            Rectangle {
+                x: 0;
+                width: i == index ? parent.width * root.progress : (i < index ? parent.width : 0px);
+                height: parent.height;
+                background: Theme.orange;
+            }
             TouchArea {
                 mouse-cursor: pointer;
-                clicked => { root.index = i; }
+                clicked => { root.go(i); }
             }
         }
     }
+
     Timer {
-        interval: 9s;
-        running: heroes.length > 1;
-        triggered => { root.index = mod(root.index + 1, heroes.length); }
+        interval: 50ms;
+        running: root.active && heroes.length > 1 && !hovered;
+        triggered => {
+            root.progress += 50ms / root.slide;
+            if (root.progress >= 1) { root.go(root.index + 1); }
+        }
     }
 }
 
@@ -545,32 +597,31 @@ export component HomePage inherits Rectangle {
     in property <[HeroData]> heroes;
     in property <[RowData]> rows;
     in property <bool> loading;
+    in property <bool> active: true;
     callback open(string);
     callback play(string);
     callback card-clicked(CardData);
-    property <length> hero-h: max(520px, root.height * 0.72);
+    property <length> hero-h: max(520px, root.height * 0.78);
+    if loading && rows.length == 0: BrandLoader { }
     flick := Flickable {
+        visible: !(loading && rows.length == 0);
         content-width: self.width;
-        content-height: hero-h + col.preferred-height;
+        content-height: (heroes.length > 0 ? hero-h - 110px : 40px) + col.preferred-height;
         Hero {
-            width: parent.width;
-            height: hero-h;
+            visible: heroes.length > 0;
+            y: 0;
+            width: flick.width;
+            height: heroes.length > 0 ? hero-h : 0px;
             heroes: root.heroes;
+            active: root.active;
             open(id) => { root.open(id); }
             play(id) => { root.play(id); }
         }
-        if loading && heroes.length == 0: Skeleton {
-            width: parent.width;
-            height: hero-h;
-            radius: 0;
-        }
         col := VerticalLayout {
-            y: hero-h - 90px;
+            y: heroes.length > 0 ? hero-h - 110px : 40px;
             width: parent.width;
-            spacing: 26px;
+            spacing: 30px;
             padding-bottom: 60px;
-            if loading && rows.length == 0: RowSkeleton { wide: true; }
-            if loading && rows.length == 0: RowSkeleton { }
             for r in rows: CardRow {
                 shelf: r;
                 card-clicked(d) => { root.card-clicked(d); }

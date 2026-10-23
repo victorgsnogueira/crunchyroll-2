@@ -1,16 +1,25 @@
 import { Theme, Icons } from "theme.slint";
 import { CardData, RowData } from "data.slint";
 
-// Shimmering placeholder used instead of spinners while content loads.
+// Quiet placeholder behind images that are still arriving (near-black, no shimmer).
 export component Skeleton inherits Rectangle {
     in property <length> radius: Theme.radius-sm;
     border-radius: radius;
-    background: Theme.surface-2;
-    clip: true;
-    Rectangle {
-        width: parent.width * 0.6;
-        x: -self.width + mod(animation-tick() / 1ms, 1600) / 1600 * (parent.width + self.width);
-        background: @linear-gradient(90deg, #ffffff00 0%, #ffffff10 50%, #ffffff00 100%);
+    background: #0E0F12;
+}
+
+// Page-level loading: the Crunchyroll symbol breathing in brand orange.
+export component BrandLoader inherits Rectangle {
+    in property <length> size: 56px;
+    property <float> phase: mod(animation-tick() / 1ms, 1400) / 1400;
+    property <float> wave: phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+    min-height: size * 3;
+    Image {
+        source: Icons.symbol;
+        colorize: Theme.orange;
+        width: size * (0.92 + 0.12 * wave);
+        height: self.width;
+        opacity: 0.45 + 0.55 * wave;
     }
 }
 

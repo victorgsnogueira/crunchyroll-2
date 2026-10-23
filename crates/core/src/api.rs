@@ -48,6 +48,15 @@ impl Session {
         let mut similar_used = 0;
         let mut series_feeds_used = 0;
 
+        let kinds: Vec<String> = feed
+            .iter()
+            .map(|f| match f {
+                HomeFeed::Unknown(m) => format!("Unknown({:?})", m.get("resource_type").or(m.get("response_type"))),
+                other => format!("{other:?}").chars().take_while(|c| *c != '(' && *c != '{').collect(),
+            })
+            .collect();
+        tracing::debug!("home feed: {} itens: {}", feed.len(), kinds.join(", "));
+
         for item in feed {
             match item {
                 HomeFeed::CarouselFeed(items) => {
@@ -62,12 +71,13 @@ impl Session {
                                 _ => continue,
                             },
                         };
+                        use crate::images::{FmsKind, fms_url};
                         heroes.push(Hero {
                             series_id,
                             title: c.title,
                             description: c.description,
-                            image: c.images.landscape_large,
-                            logo: c.images.logo,
+                            image: c.images.landscape_large.as_deref().and_then(|n| fms_url(FmsKind::Landscape, n)),
+                            logo: c.images.logo.as_deref().and_then(|n| fms_url(FmsKind::Logo, n)),
                         });
                     }
                 }
