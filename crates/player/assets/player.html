@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Player</title>
+<link rel="stylesheet" href="/player.css">
+</head>
+<body>
+<div id="stage">
+  <video id="video" playsinline></video>
+</div>
+
+<div id="ui" class="visible">
+  <div class="shade-top"></div>
+  <div class="shade-bottom"></div>
+
+  <header class="top">
+    <button class="icon-btn" id="btn-back" title="Voltar (Esc)">
+      <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" /></svg>
+    </button>
+    <div class="titles">
+      <div id="t-title" class="t-title"></div>
+      <div id="t-sub" class="t-sub"></div>
+    </div>
+  </header>
+
+  <button id="skip" class="skip hidden">Pular abertura <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" /></svg></button>
+
+  <div id="nextcard" class="nextcard hidden">
+    <div class="nc-thumb"><img id="nc-img" alt=""></div>
+    <div class="nc-text">
+      <div class="nc-label">A seguir</div>
+      <div id="nc-title" class="nc-title"></div>
+      <div class="nc-actions">
+        <button id="nc-play" class="btn-primary"><svg viewBox="0 0 24 24"><path class="fill" d="M8 5v14l11-7z"/></svg>Assistir</button>
+        <button id="nc-cancel" class="btn-ghost">Cancelar</button>
+      </div>
+    </div>
+    <svg class="nc-ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" class="ring-bg"/><circle id="nc-ring" cx="18" cy="18" r="16" class="ring-fg"/></svg>
+  </div>
+
+  <footer class="bottom">
+    <div id="bar" class="bar">
+      <div class="bar-track">
+        <div id="bar-buffer" class="bar-buffer"></div>
+        <div id="bar-markers"></div>
+        <div id="bar-played" class="bar-played"></div>
+      </div>
+      <div id="bar-knob" class="bar-knob"></div>
+      <div id="bar-tip" class="bar-tip">0:00</div>
+    </div>
+    <div class="controls">
+      <button class="icon-btn" id="btn-play" title="Reproduzir (Espaço)">
+        <svg viewBox="0 0 24 24" id="ic-play"><path class="fill" d="M8 5v14l11-7z"/></svg>
+        <svg viewBox="0 0 24 24" id="ic-pause" class="hidden"><path class="fill" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-rew" title="Voltar 10 s (←)">
+        <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6"/><path d="M4 4v4h4"/><text x="12" y="15.5" class="ic-num">10</text></svg>
+      </button>
+      <button class="icon-btn" id="btn-fwd" title="Avançar 10 s (→)">
+        <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/><text x="12" y="15.5" class="ic-num">10</text></svg>
+      </button>
+      <button class="icon-btn" id="btn-next" title="Próximo episódio (N)">
+        <svg viewBox="0 0 24 24"><path class="fill" d="M6 6v12l8.5-6z"/><path d="M17 6v12"/></svg>
+      </button>
+      <div class="volume">
+        <button class="icon-btn" id="btn-mute" title="Mudo (M)">
+          <svg viewBox="0 0 24 24"><path class="fill" d="M4 9h4l5-4v14l-5-4H4z"/><path id="ic-wave1" d="M16 9.5a3.5 3.5 0 0 1 0 5"/><path id="ic-wave2" d="M18.5 7a7 7 0 0 1 0 10"/><path id="ic-x" class="hidden" d="M16 9l5 6M21 9l-5 6"/></svg>
+        </button>
+        <input id="vol" type="range" min="0" max="1" step="0.01" value="1">
+      </div>
+      <div class="time"><span id="t-cur">0:00</span><span class="sep">/</span><span id="t-dur">0:00</span></div>
+      <div class="spacer"></div>
+      <button class="icon-btn" id="btn-subs" title="Legendas (C)">
+        <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 13h4M13 13h4M7 16h7"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-settings" title="Configurações">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v2.6M12 18.9v2.6M4.6 4.6l1.9 1.9M17.5 17.5l1.9 1.9M2.5 12h2.6M18.9 12h2.6M4.6 19.4l1.9-1.9M17.5 6.5l1.9-1.9"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-full" title="Tela cheia (F)">
+        <svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>
+      </button>
+    </div>
+  </footer>
+
+  <div id="menu" class="menu hidden"></div>
+</div>
+
+<div id="loading" class="loading">
+  <div class="spinner"></div>
+</div>
+
+<div id="error" class="error hidden">
+  <div class="error-box">
+    <div class="error-title">Não foi possível reproduzir</div>
+    <div id="error-msg" class="error-msg"></div>
+    <button id="error-back" class="btn-primary">Voltar</button>
+  </div>
+</div>
+
+<div id="debug" class="debug hidden"></div>
+
+<script src="/vendor/shaka-player.compiled.js"></script>
+<script src="/vendor/jassub.umd.js"></script>
+<script src="/player.js"></script>
+</body>
+</html>
