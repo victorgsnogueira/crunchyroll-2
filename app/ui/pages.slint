@@ -1,4 +1,4 @@
-import { Theme, Icons } from "theme.slint";
+﻿import { Theme, Icons } from "theme.slint";
 import { CardData, RowData, HeroData, SeasonData, EpisodeData, DetailData, ProfileData, CalendarDayData, CalendarItemData, ListData, GenreData } from "data.slint";
 import { Skeleton, Spinner, PrimaryButton, GhostButton, IconButton, Chip, TextField, LazyImage, PosterCard, WideCard, CardRow, RowSkeleton, SectionTitle } from "components.slint";
 
@@ -215,7 +215,7 @@ export component LoginPage inherits Rectangle {
                 clicked => { root.start-sso(); }
             }
             GhostButton {
-                text: "ENTRAR COM CÓDIGO (COMO NA TV)";
+                text: "ENTRAR COM CÓDIGO";
                 clicked => { root.start-code(); }
             }
             Text {

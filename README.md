@@ -1,4 +1,4 @@
-# Crunchyroll Desktop
+﻿# Crunchyroll Desktop
 
 Client nativo da Crunchyroll para Windows, em Rust + Slint. Uso pessoal: usa a
 marca da Crunchyroll e uma API não oficial, então **não distribua**.
@@ -26,7 +26,7 @@ de celular também não usa). Por isso há dois jeitos de entrar:
   dentro do app (como no app de celular). Ao terminar, o app captura o
   redirecionamento `sso.crunchyroll://auth?code=...` e troca o código pela sessão
   (OAuth com PKCE, cliente do app Android de celular).
-- **Código como na TV**: o app mostra um código para digitar em
+- **Código**: o app mostra um código para digitar em
   crunchyroll.com/activate (cliente do app Android TV).
 
 As credenciais de cliente dos apps oficiais são buscadas do repositório
