@@ -358,7 +358,7 @@ impl Session {
             audio: dedup(s.audio_locales.iter().map(|l| language_name(&l.to_string()))),
             subtitles: dedup(s.subtitle_locales.iter().map(|l| language_name(&l.to_string()))),
             maturity: s.maturity_ratings.first().cloned().unwrap_or_default(),
-            seasons: seasons.iter().map(season_info).collect(),
+            seasons: original_seasons(&seasons),
             in_watchlist: matches!(wl, Ok(Some(_))),
             rating: rating.as_ref().map(|r| r.average).unwrap_or(0.0),
             rating_count: rating.as_ref().map(|r| r.total).unwrap_or(0),
@@ -739,6 +739,36 @@ pub fn skip_markers(s: SkipEvents) -> Vec<SkipMarker> {
     out
 }
 
+/// One entry per season, pointing at its original-audio version (dub versions are
+/// reached through the player's audio menu).
+fn original_seasons(seasons: &[Season]) -> Vec<SeasonInfo> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for s in seasons {
+        let original = s.versions.iter().find(|v| v.original).map(|v| v.id.clone()).unwrap_or_else(|| s.id.clone());
+        if !seen.insert(original.clone()) {
+            continue;
+        }
+        let mut info = season_info(s);
+        if original != s.id {
+            info.id = original;
+            info.label = strip_version_suffix(&s.title, s.season_number);
+        }
+        out.push(info);
+    }
+    out
+}
+
+/// "Solo Leveling (Korean Version)" -> "Solo Leveling"; empty -> "Temporada N".
+pub fn strip_version_suffix(title: &str, number: u32) -> String {
+    let t = title.trim();
+    let t = match t.rfind(" (") {
+        Some(i) if t.ends_with(')') => &t[..i],
+        _ => t,
+    };
+    if t.is_empty() { format!("Temporada {number}") } else { t.to_string() }
+}
+
 fn season_info(s: &Season) -> SeasonInfo {
     let audio = s.audio_locales.first().map(|l| l.to_string()).unwrap_or_default();
     let label = if s.title.is_empty() { format!("Temporada {}", s.season_number) } else { s.title.clone() };
@@ -825,6 +855,26 @@ mod tests {
         assert_eq!(m.len(), 2);
         assert_eq!(m[0], SkipMarker { kind: SkipKind::Intro, start: 90.0, end: 180.0 });
         assert_eq!(m[1].kind, SkipKind::Credits);
+    }
+
+    #[test]
+    fn version_suffix_is_removed() {
+        assert_eq!(strip_version_suffix("Solo Leveling (Korean Version)", 1), "Solo Leveling");
+        assert_eq!(strip_version_suffix("Re:ZERO (Dub)", 2), "Re:ZERO");
+        assert_eq!(strip_version_suffix("", 3), "Temporada 3");
+        assert_eq!(strip_version_suffix("Mob Psycho 100 II", 2), "Mob Psycho 100 II");
+    }
+
+    #[test]
+    fn seasons_collapse_to_original_versions() {
+        let jp = json!({"guid": "JP1", "audio_locale": "ja-JP", "original": true});
+        let ko = json!({"guid": "KO1", "audio_locale": "ko-KR", "original": false});
+        let a: Season = serde_json::from_value(json!({"id": "KO1", "title": "Show (Korean Version)", "season_number": 1, "versions": [jp, ko]})).unwrap();
+        let b: Season = serde_json::from_value(json!({"id": "JP1", "title": "Show", "season_number": 1, "versions": [jp, ko]})).unwrap();
+        let out = original_seasons(&[a, b]);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].id, "JP1");
+        assert_eq!(out[0].label, "Show");
     }
 
     #[test]

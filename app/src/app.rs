@@ -264,6 +264,13 @@ impl App {
         ui.set_detail_open(false);
         ui.set_screen("main".into());
         self.load_home(true);
+        // Development shortcuts for screenshots/tests.
+        if let Ok(page) = std::env::var("CR_DEV_PAGE") {
+            self.navigate(page);
+        }
+        if let Ok(id) = std::env::var("CR_DEV_DETAIL") {
+            self.open_detail(id);
+        }
         self.with_session(|s| async move { s.profiles().await }, |app, p| {
             if let Ok(p) = p {
                 app.set_profiles(&p);

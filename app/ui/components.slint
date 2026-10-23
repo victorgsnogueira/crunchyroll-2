@@ -436,12 +436,6 @@ export component CardRow inherits Rectangle {
             }
         }
     }
-    hover := TouchArea {
-        y: flick.y;
-        height: flick.height;
-        // passes clicks through: only used for hover detection and wheel
-        enabled: false;
-    }
     property <length> page: max(card-w, (root.width - side * 2) - card-w);
     if flick.content-x < 0: arrow-l := Rectangle {
         x: 0;
@@ -523,7 +517,7 @@ export component NavItem inherits Rectangle {
         font-weight: active ? 900 : 700;
         font-size: Theme.fs-md;
         opacity: expanded ? 1 : 0;
-        animate opacity { duration: Theme.normal; easing: Theme.ease; }
+        animate opacity { duration: Theme.normal; easing: Theme.ease; delay: 90ms; }
     }
     ta := TouchArea {
         mouse-cursor: pointer;

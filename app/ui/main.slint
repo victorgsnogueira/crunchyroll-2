@@ -62,127 +62,131 @@ component Sidebar inherits Rectangle {
     callback navigate(string);
     property <bool> open: hover.has-hover;
     width: open ? Theme.sidebar-w-open : Theme.sidebar-w;
-    animate width { duration: Theme.normal; easing: Theme.ease; }
+    // small delay so a mouse just passing by does not pop the sidebar open
+    animate width { duration: Theme.normal; easing: Theme.ease; delay: 90ms; }
     background: Theme.surface-1;
     drop-shadow-blur: open ? 40px : 0px;
     drop-shadow-color: #000000cc;
-    animate drop-shadow-blur { duration: Theme.normal; }
+    animate drop-shadow-blur { duration: Theme.normal; delay: 90ms; }
     clip: true;
+    // Wraps everything so hovering an item keeps the sidebar open
+    // (a sibling TouchArea underneath loses hover over the items).
     hover := TouchArea {
-        // hover detection only; children handle clicks
-    }
-    // Logo: symbol when closed, full wordmark when open.
-    Rectangle {
-        x: 20px;
-        y: 22px;
-        width: open ? 160px : 36px;
-        height: 36px;
-        clip: true;
-        animate width { duration: Theme.normal; easing: Theme.ease; }
-        Image {
-            x: 0;
-            source: Icons.logo;
-            height: 36px;
-            width: 36px * 303 / 52;
-        }
-        TouchArea {
-            mouse-cursor: pointer;
-            clicked => { root.navigate("home"); }
-        }
-    }
-    VerticalLayout {
-        y: 96px;
-        height: parent.height - 96px;
-        padding-left: 14px;
-        padding-right: 14px;
-        padding-bottom: 18px;
-        spacing: 6px;
-        NavItem {
-            icon: Icons.home;
-            label: "Início";
-            active: page == "home";
-            expanded: open;
-            clicked => { root.navigate("home"); }
-        }
-        NavItem {
-            icon: Icons.search;
-            label: "Buscar";
-            active: page == "search";
-            expanded: open;
-            clicked => { root.navigate("search"); }
-        }
-        NavItem {
-            icon: Icons.compass;
-            label: "Explorar";
-            active: page == "browse";
-            expanded: open;
-            clicked => { root.navigate("browse"); }
-        }
-        NavItem {
-            icon: Icons.calendar;
-            label: "Simulcasts";
-            active: page == "simulcast";
-            expanded: open;
-            clicked => { root.navigate("simulcast"); }
-        }
-        NavItem {
-            icon: Icons.bookmark;
-            label: "Minha lista";
-            active: page == "mylist";
-            expanded: open;
-            clicked => { root.navigate("mylist"); }
-        }
-        NavItem {
-            icon: Icons.history;
-            label: "Histórico";
-            active: page == "history";
-            expanded: open;
-            clicked => { root.navigate("history"); }
-        }
-        Rectangle { vertical-stretch: 1; }
-        // profile
+        width: 100%;
+        height: 100%;
+        // Logo: symbol when closed, full wordmark when open.
         Rectangle {
-            height: 56px;
-            border-radius: Theme.radius-md;
-            background: pa.has-hover || page == "account" ? #ffffff0d : transparent;
-            animate background { duration: Theme.fast; }
+            x: 20px;
+            y: 22px;
+            width: open ? 160px : 36px;
+            height: 36px;
+            clip: true;
+            animate width { duration: Theme.normal; easing: Theme.ease; delay: 90ms; }
+            Image {
+                x: 0;
+                source: Icons.logo;
+                height: 36px;
+                width: 36px * 303 / 52;
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.navigate("home"); }
+            }
+        }
+        VerticalLayout {
+            y: 96px;
+            height: parent.height - 96px;
+            padding-left: 14px;
+            padding-right: 14px;
+            padding-bottom: 18px;
+            spacing: 6px;
+            NavItem {
+                icon: Icons.home;
+                label: "Início";
+                active: page == "home";
+                expanded: open;
+                clicked => { root.navigate("home"); }
+            }
+            NavItem {
+                icon: Icons.search;
+                label: "Buscar";
+                active: page == "search";
+                expanded: open;
+                clicked => { root.navigate("search"); }
+            }
+            NavItem {
+                icon: Icons.compass;
+                label: "Explorar";
+                active: page == "browse";
+                expanded: open;
+                clicked => { root.navigate("browse"); }
+            }
+            NavItem {
+                icon: Icons.calendar;
+                label: "Simulcasts";
+                active: page == "simulcast";
+                expanded: open;
+                clicked => { root.navigate("simulcast"); }
+            }
+            NavItem {
+                icon: Icons.bookmark;
+                label: "Minha lista";
+                active: page == "mylist";
+                expanded: open;
+                clicked => { root.navigate("mylist"); }
+            }
+            NavItem {
+                icon: Icons.history;
+                label: "Histórico";
+                active: page == "history";
+                expanded: open;
+                clicked => { root.navigate("history"); }
+            }
+            Rectangle { vertical-stretch: 1; }
+            // profile
             Rectangle {
-                x: 8px;
-                width: 32px;
-                height: 32px;
-                border-radius: 16px;
-                clip: true;
-                background: Theme.surface-3;
-                border-width: page == "account" ? 2px : 0px;
-                border-color: Theme.orange;
-                if has-avatar: Image {
-                    source: avatar;
+                height: 56px;
+                border-radius: Theme.radius-md;
+                background: pa.has-hover || page == "account" ? #ffffff0d : transparent;
+                animate background { duration: Theme.fast; }
+                Rectangle {
+                    x: 8px;
                     width: 32px;
                     height: 32px;
-                    image-fit: cover;
+                    border-radius: 16px;
+                    clip: true;
+                    background: Theme.surface-3;
+                    border-width: page == "account" ? 2px : 0px;
+                    border-color: Theme.orange;
+                    if has-avatar: Image {
+                        source: avatar;
+                        width: 32px;
+                        height: 32px;
+                        image-fit: cover;
+                    }
+                    if !has-avatar: Image {
+                        source: Icons.user;
+                        width: 18px;
+                        height: 18px;
+                        colorize: Theme.text-2;
+                    }
                 }
-                if !has-avatar: Image {
-                    source: Icons.user;
-                    width: 18px;
-                    height: 18px;
-                    colorize: Theme.text-2;
+                Text {
+                    x: 54px;
+                    text: profile-name;
+                    color: Theme.text;
+                    font-family: Theme.font;
+                    font-weight: 700;
+                    font-size: Theme.fs-md;
+                    opacity: open ? 1 : 0;
+                    animate opacity { duration: Theme.normal; delay: 90ms; }
+                    overflow: elide;
+                    width: parent.width - 60px;
                 }
-            }
-            Text {
-                x: 54px;
-                text: profile-name;
-                color: Theme.text;
-                font-family: Theme.font;
-                font-weight: 700;
-                font-size: Theme.fs-md;
-                opacity: open ? 1 : 0;
-                animate opacity { duration: Theme.normal; }
-                overflow: elide;
-                width: parent.width - 60px;
-            }
-            pa := TouchArea {
-                mouse-cursor: pointer;
-                clicked => { root.navigate("account"); }
+                pa := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.navigate("account"); }
+                }
             }
         }
     }
