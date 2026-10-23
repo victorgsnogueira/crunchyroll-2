@@ -48,12 +48,19 @@ pub fn device_id() -> String {
 }
 
 /// The official apps' client credentials rotate; the copy bundled in
-/// crunchyroll-rs goes stale. We fetch the current Android TV credentials from
+/// crunchyroll-rs goes stale. We fetch the current ones from
 /// crunchy-labs/artifacts and keep a local copy (refreshed daily).
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-struct TvCredentials {
-    basic_auth_token: String,
-    user_agent: String,
+pub struct ClientCredentials {
+    pub client_id: String,
+    pub basic_auth_token: String,
+    pub user_agent: String,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct AppCredentials {
+    tv: ClientCredentials,
+    phone: ClientCredentials,
     fetched_at: u64,
 }
 
@@ -61,9 +68,9 @@ fn now_secs() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
-async fn tv_credentials(force_refresh: bool) -> Option<TvCredentials> {
-    let path = data_dir().join("tv_credentials.json");
-    let cached: Option<TvCredentials> = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice(&b).ok());
+async fn app_credentials(force_refresh: bool) -> Option<AppCredentials> {
+    let path = data_dir().join("app_credentials.json");
+    let cached: Option<AppCredentials> = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice(&b).ok());
     if let Some(c) = &cached {
         if !force_refresh && now_secs().saturating_sub(c.fetched_at) < 24 * 3600 {
             return cached;
@@ -71,9 +78,17 @@ async fn tv_credentials(force_refresh: bool) -> Option<TvCredentials> {
     }
     match crunchyroll_rs::auth::platform_credentials::get_platform_credentials().await {
         Ok(c) => {
-            let creds = TvCredentials {
-                basic_auth_token: c.android_tv.basic_auth_token.clone(),
-                user_agent: c.android_tv_user_agent(),
+            let creds = AppCredentials {
+                tv: ClientCredentials {
+                    client_id: c.android_tv.client_id.clone(),
+                    basic_auth_token: c.android_tv.basic_auth_token.clone(),
+                    user_agent: c.android_tv_user_agent(),
+                },
+                phone: ClientCredentials {
+                    client_id: c.android_phone.client_id.clone(),
+                    basic_auth_token: c.android_phone.basic_auth_token.clone(),
+                    user_agent: c.android_phone_user_agent(),
+                },
                 fetched_at: now_secs(),
             };
             let _ = std::fs::create_dir_all(data_dir());
@@ -81,25 +96,66 @@ async fn tv_credentials(force_refresh: bool) -> Option<TvCredentials> {
             Some(creds)
         }
         Err(e) => {
-            tracing::warn!("não buscou credenciais atuais do app de TV: {e}");
+            tracing::warn!("não buscou credenciais atuais dos apps: {e}");
             cached
         }
     }
 }
 
-fn device() -> DeviceIdentifier {
+/// Which official app identity a session belongs to. Refresh tokens only work
+/// with the client that issued them, so this is saved with the session.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Platform {
+    /// Android TV client: code login (crunchyroll.com/activate).
+    Tv,
+    /// Android phone client: official SSO page login.
+    Phone,
+}
+
+fn saved_platform() -> Platform {
+    match std::fs::read_to_string(data_dir().join("platform")).as_deref().map(str::trim) {
+        Ok("phone") => Platform::Phone,
+        _ => Platform::Tv,
+    }
+}
+
+fn save_platform(p: Platform) {
+    let _ = std::fs::create_dir_all(data_dir());
+    let _ = std::fs::write(data_dir().join("platform"), if p == Platform::Phone { "phone" } else { "tv" });
+}
+
+fn device_for(p: Platform) -> DeviceIdentifier {
     DeviceIdentifier {
         device_id: device_id(),
-        device_type: "ANDROIDTV".into(),
+        device_type: match p {
+            Platform::Tv => "ANDROIDTV".into(),
+            Platform::Phone => "Windows PC".into(),
+        },
         device_name: Some("Crunchyroll Desktop".into()),
     }
 }
 
-/// Builder using the current TV credentials (falls back to the bundled ones).
-async fn tv_builder(force_refresh: bool) -> crunchyroll_rs::auth::CrunchyrollBuilder {
+fn device() -> DeviceIdentifier {
+    device_for(Platform::Tv)
+}
+
+async fn client_for(p: Platform) -> Option<ClientCredentials> {
+    let c = app_credentials(false).await?;
+    Some(match p {
+        Platform::Tv => c.tv,
+        Platform::Phone => c.phone,
+    })
+}
+
+/// Builder with the current credentials of `p` (falls back to the bundled TV ones).
+async fn builder_for(p: Platform) -> crunchyroll_rs::auth::CrunchyrollBuilder {
     let b = builder();
-    match tv_credentials(force_refresh).await {
-        Some(c) => b.platform(crunchyroll_rs::auth::DevicePlatform::TvAndroid, c.basic_auth_token, Some(c.user_agent)),
+    let dp = match p {
+        Platform::Tv => crunchyroll_rs::auth::DevicePlatform::TvAndroid,
+        Platform::Phone => crunchyroll_rs::auth::DevicePlatform::AndroidPhone,
+    };
+    match client_for(p).await {
+        Some(c) => b.platform(dp, c.basic_auth_token, Some(c.user_agent)),
         None => b,
     }
 }
@@ -108,6 +164,18 @@ fn builder() -> crunchyroll_rs::auth::CrunchyrollBuilder {
     Crunchyroll::builder()
         .locale(Locale::pt_BR)
         .preferred_audio_locale(Locale::ja_JP)
+}
+
+/// PKCE verifier for the SSO login (43+ chars from the unreserved set).
+pub fn new_code_verifier() -> String {
+    let a = uuid::Uuid::new_v4().simple().to_string();
+    let b = uuid::Uuid::new_v4().simple().to_string();
+    format!("{a}{b}")
+}
+
+/// Client id of the phone app, used to open the SSO page.
+pub async fn sso_client_id() -> Result<String> {
+    Ok(client_for(Platform::Phone).await.context("credenciais do app de celular indisponíveis")?.client_id)
 }
 
 /// TV-style sign-in: the user approves `user_code` at crunchyroll.com/activate.
@@ -127,8 +195,8 @@ pub fn normalize_interval_ms(raw: u64) -> u64 {
     ms.clamp(1000, 5000)
 }
 
-async fn auth_http() -> Result<(reqwest::Client, TvCredentials)> {
-    let creds = tv_credentials(false).await.context("credenciais do app de TV indisponíveis")?;
+async fn auth_http() -> Result<(reqwest::Client, ClientCredentials)> {
+    let creds = client_for(Platform::Tv).await.context("credenciais do app de TV indisponíveis")?;
     let http = crunchyroll_rs::auth::CrunchyrollBuilder::predefined_client_builder()
         .user_agent(creds.user_agent.clone())
         .build()?;
@@ -148,22 +216,20 @@ pub struct Session {
 }
 
 impl Session {
-    pub async fn login(email: &str, password: &str) -> std::result::Result<Session, String> {
-        let mut result = tv_builder(false).await.login_with_credentials(email, password, device()).await;
-        if let Err(e) = &result {
-            // a stale cached client token also looks like "wrong password": refresh once and retry
-            tracing::warn!("login falhou: {:?} {e}", e.kind());
-            if matches!(e.kind(), ErrorKind::Authentication | ErrorKind::Request { .. }) {
-                result = tv_builder(true).await.login_with_credentials(email, password, device()).await;
-            }
-        }
+    /// Finishes the official SSO page login: exchanges the redirect code.
+    pub async fn login_with_sso_code(code: &str, verifier: &str) -> std::result::Result<Session, String> {
+        let result = builder_for(Platform::Phone)
+            .await
+            .login_with_oauth_code(code, verifier, device_for(Platform::Phone))
+            .await;
         match result {
             Ok(cr) => {
-                tracing::info!("login ok");
+                tracing::info!("login pelo SSO ok");
+                save_platform(Platform::Phone);
                 Self::finish(cr).await.map_err(|e| format!("{e:#}"))
             }
             Err(e) => {
-                tracing::warn!("login falhou: {:?} {e}", e.kind());
+                tracing::warn!("troca do código do SSO falhou: {:?} {e}", e.kind());
                 Err(friendly_error(&e))
             }
         }
@@ -224,12 +290,13 @@ impl Session {
         if status.is_success() {
             let v: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
             if let Some(refresh) = v.get("refresh_token").and_then(|t| t.as_str()) {
-                let cr = tv_builder(false)
+                let cr = builder_for(Platform::Tv)
                     .await
                     .login_with_refresh_token(refresh, device())
                     .await
                     .map_err(|e| anyhow::anyhow!(friendly_error(&e)))?;
                 tracing::info!("login por código ok");
+                save_platform(Platform::Tv);
                 return Ok(DevicePoll::Done(Self::finish(cr).await?));
             }
             return Ok(DevicePoll::Pending);
@@ -245,8 +312,13 @@ impl Session {
         let token = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).ok()?.get_password().ok()?;
         let profile = std::fs::read_to_string(data_dir().join("profile_id")).ok();
         let result = match profile.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
-            Some(p) => tv_builder(false).await.login_with_refresh_token_profile_id(token.as_str(), p, device()).await,
-            None => tv_builder(false).await.login_with_refresh_token(&token, device()).await,
+            Some(p) => {
+                builder_for(saved_platform())
+                    .await
+                    .login_with_refresh_token_profile_id(token.as_str(), p, device_for(saved_platform()))
+                    .await
+            }
+            None => builder_for(saved_platform()).await.login_with_refresh_token(&token, device_for(saved_platform())).await,
         };
         match result {
             Ok(cr) => Self::finish(cr).await.ok(),
@@ -302,9 +374,9 @@ impl Session {
         let SessionToken::RefreshToken(token) = self.cr.session_token().await else {
             anyhow::bail!("sessão sem refresh token");
         };
-        let cr = tv_builder(false)
+        let cr = builder_for(saved_platform())
             .await
-            .login_with_refresh_token_profile_id(token.as_str(), profile_id, device())
+            .login_with_refresh_token_profile_id(token.as_str(), profile_id, device_for(saved_platform()))
             .await
             .map_err(|e| anyhow::anyhow!(friendly_error(&e)))?;
         let _ = std::fs::create_dir_all(data_dir());
@@ -343,6 +415,14 @@ mod tests {
         assert_eq!(normalize_interval_ms(5), 5000);
         assert_eq!(normalize_interval_ms(2), 2000);
         assert_eq!(normalize_interval_ms(0), 5000);
+    }
+
+    #[test]
+    fn code_verifier_is_valid_pkce() {
+        let v = new_code_verifier();
+        assert!(v.len() >= 43 && v.len() <= 128);
+        assert!(v.chars().all(|c| c.is_ascii_alphanumeric()));
+        assert_ne!(v, new_code_verifier());
     }
 
     #[test]

@@ -2,6 +2,8 @@
 //! Shaka Player page. DRM is handled by the WebView's own licensed CDM; this crate
 //! only forwards bytes (manifest, license challenge/response, subtitle files).
 
+pub mod sso;
+
 use anyhow::{Result, anyhow};
 use raw_window_handle::HasWindowHandle;
 use serde::Deserialize;

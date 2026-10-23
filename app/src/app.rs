@@ -51,6 +51,10 @@ pub struct App {
     code_timer: slint::Timer,
     code_polling: Cell<bool>,
     code_login: RefCell<Option<session::DeviceLogin>>,
+    sso: RefCell<Option<cr_player::sso::SsoView>>,
+    sso_verifier: RefCell<String>,
+    sso_timer: slint::Timer,
+    sso_bounds: Cell<(i32, i32, u32, u32)>,
 }
 
 impl App {
@@ -85,6 +89,10 @@ impl App {
             code_timer: slint::Timer::default(),
             code_polling: Cell::new(false),
             code_login: RefCell::new(None),
+            sso: RefCell::new(None),
+            sso_verifier: RefCell::new(String::new()),
+            sso_timer: slint::Timer::default(),
+            sso_bounds: Cell::new((0, 0, 0, 0)),
         });
         app.bind_models(ui);
         app
@@ -179,6 +187,11 @@ impl App {
 
     pub fn start(self: &Rc<Self>) {
         self.ui().set_screen("splash".into());
+        // Development: open the SSO panel directly (does not touch the saved session).
+        if std::env::var("CR_DEV_SSO").is_ok() {
+            self.ui().set_screen("login".into());
+            return self.start_sso();
+        }
         if std::env::var("CR_ANON").is_ok() {
             return self.run(Session::anonymous(), |app, s| match s {
                 Ok(s) => app.enter(Arc::new(s)),
@@ -194,18 +207,119 @@ impl App {
         });
     }
 
-    pub fn login(self: &Rc<Self>, email: String, password: String) {
+    // ----------------------------------------------------- SSO page login
+
+    /// Shows Crunchyroll's official sign-in page in the login panel.
+    pub fn start_sso(self: &Rc<Self>) {
         let ui = self.ui();
-        ui.set_login_busy(true);
         ui.set_login_error("".into());
-        self.run(async move { Session::login(email.trim(), &password).await }, |app, r| {
-            let ui = app.ui();
-            ui.set_login_busy(false);
-            match r {
-                Ok(s) => app.after_login(s),
-                Err(msg) => ui.set_login_error(msg.into()),
+        ui.set_sso_mode(true);
+        ui.set_sso_loading(true);
+        self.run(session::sso_client_id(), |app, r| {
+            let client_id = match r {
+                Ok(id) => id,
+                Err(e) => {
+                    app.close_sso();
+                    return app.ui().set_login_error(format!("Não foi possível abrir o login: {e:#}").into());
+                }
+            };
+            if !app.ui().get_sso_mode() {
+                return; // user went back meanwhile
+            }
+            let verifier = session::new_code_verifier();
+            let url = cr_player::sso::authorize_url(&client_id, &verifier);
+            *app.sso_verifier.borrow_mut() = verifier;
+            if let Err(e) = app.show_sso(&url) {
+                app.close_sso();
+                app.ui().set_login_error(format!("Não foi possível abrir o login: {e:#}").into());
+                return;
+            }
+            let weak = Rc::downgrade(app);
+            slint::Timer::single_shot(Duration::from_millis(1200), move || {
+                if let Some(app) = weak.upgrade() {
+                    app.ui().set_sso_loading(false);
+                }
+            });
+        });
+    }
+
+    fn sso_physical_bounds(&self) -> cr_player::Bounds {
+        let ui = self.ui();
+        let scale = ui.window().scale_factor();
+        cr_player::Bounds {
+            x: (ui.get_sso_x() * scale).round() as i32,
+            y: (ui.get_sso_y() * scale).round() as i32,
+            width: (ui.get_sso_w() * scale).round().max(1.0) as u32,
+            height: (ui.get_sso_h() * scale).round().max(1.0) as u32,
+        }
+    }
+
+    fn show_sso(self: &Rc<Self>, url: &str) -> anyhow::Result<()> {
+        let bounds = self.sso_physical_bounds();
+        if let Some(view) = self.sso.borrow().as_ref() {
+            view.load(url);
+            view.set_bounds(&bounds);
+            view.set_visible(true);
+        } else {
+            let ui = self.ui();
+            let handle = ui.window().window_handle();
+            let weak = Rc::downgrade(self);
+            let view = cr_player::sso::SsoView::new(&handle, bounds, session::data_dir().join("webview-sso"), url, move |r| {
+                if let Some(app) = weak.upgrade() {
+                    app.on_sso_result(r);
+                }
+            })?;
+            *self.sso.borrow_mut() = Some(view);
+        }
+        // keep the page glued to the panel when the window is resized
+        let weak = Rc::downgrade(self);
+        self.sso_timer.start(slint::TimerMode::Repeated, Duration::from_millis(100), move || {
+            let Some(app) = weak.upgrade() else { return };
+            let b = app.sso_physical_bounds();
+            let key = (b.x, b.y, b.width, b.height);
+            if key != app.sso_bounds.get() {
+                app.sso_bounds.set(key);
+                if let Some(v) = app.sso.borrow().as_ref() {
+                    v.set_bounds(&b);
+                }
             }
         });
+        Ok(())
+    }
+
+    fn close_sso(&self) {
+        self.sso_timer.stop();
+        if let Some(v) = self.sso.borrow().as_ref() {
+            v.set_visible(false);
+            v.load("about:blank");
+        }
+        let ui = self.ui();
+        ui.set_sso_mode(false);
+        ui.set_sso_loading(false);
+    }
+
+    pub fn cancel_sso(self: &Rc<Self>) {
+        self.close_sso();
+    }
+
+    fn on_sso_result(self: &Rc<Self>, r: cr_player::sso::SsoResult) {
+        self.close_sso();
+        let ui = self.ui();
+        match r {
+            cr_player::sso::SsoResult::Code(code) => {
+                let verifier = self.sso_verifier.borrow().clone();
+                ui.set_login_busy(true);
+                self.run(async move { Session::login_with_sso_code(&code, &verifier).await }, |app, r| {
+                    let ui = app.ui();
+                    ui.set_login_busy(false);
+                    match r {
+                        Ok(s) => app.after_login(s),
+                        Err(msg) => ui.set_login_error(msg.into()),
+                    }
+                });
+            }
+            cr_player::sso::SsoResult::Error(e) => ui.set_login_error(format!("Login não concluído: {e}").into()),
+        }
     }
 
     fn after_login(self: &Rc<Self>, s: Session) {
@@ -382,6 +496,8 @@ impl App {
 
     pub fn logout(self: &Rc<Self>) {
         session::forget();
+        *self.sso.borrow_mut() = None;
+        let _ = std::fs::remove_dir_all(session::data_dir().join("webview-sso"));
         *self.session.borrow_mut() = None;
         for m in [&self.search_results, &self.popular, &self.browse_items, &self.simulcast_items, &self.watchlist, &self.list_items, &self.history] {
             m.set_vec(vec![]);

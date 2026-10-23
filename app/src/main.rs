@@ -54,7 +54,8 @@ fn wire(ui: &AppWindow, app: &Rc<App>) {
         }};
     }
 
-    on!(on_login, |a, e, p| a.login(e.to_string(), p.to_string()));
+    on!(on_start_sso, |a| a.start_sso());
+    on!(on_cancel_sso, |a| a.cancel_sso());
     on!(on_start_code, |a| a.start_code());
     on!(on_cancel_code, |a| a.cancel_code());
     on!(on_open_activate, |a| a.open_activate());

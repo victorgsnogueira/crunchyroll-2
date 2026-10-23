@@ -131,7 +131,15 @@ export component LoginPage inherits Rectangle {
     in property <[string]> code-chars;
     in property <bool> code-expired;
     in property <string> code-error;
-    callback login(string, string);
+    // Official SSO page panel (the WebView2 is placed over `sso-area` by Rust)
+    in property <bool> sso-mode;
+    in property <bool> sso-loading;
+    out property <length> sso-x: sso-area.absolute-position.x;
+    out property <length> sso-y: sso-area.absolute-position.y;
+    out property <length> sso-w: sso-area.width;
+    out property <length> sso-h: sso-area.height;
+    callback start-sso();
+    callback cancel-sso();
     callback start-code();
     callback cancel-code();
     callback open-activate();
@@ -156,7 +164,7 @@ export component LoginPage inherits Rectangle {
     }
 
     panel := Rectangle {
-        visible: !code-mode;
+        visible: !code-mode && !sso-mode;
         width: 440px;
         height: lay.preferred-height;
         border-radius: Theme.radius-lg;
@@ -184,14 +192,13 @@ export component LoginPage inherits Rectangle {
                 font-size: Theme.fs-xl;
                 horizontal-alignment: center;
             }
-            email := TextField {
-                label: "E-mail";
-                accepted => { pass.focus-input(); }
-            }
-            pass := TextField {
-                label: "Senha";
-                password: true;
-                accepted => { root.login(email.text, pass.text); }
+            Text {
+                text: "Use a sua conta da Crunchyroll para assistir.";
+                color: Theme.text-2;
+                font-family: Theme.font;
+                font-size: Theme.fs-md;
+                wrap: word-wrap;
+                horizontal-alignment: center;
             }
             if error != "": Text {
                 text: error;
@@ -199,26 +206,75 @@ export component LoginPage inherits Rectangle {
                 font-family: Theme.font;
                 font-size: Theme.fs-sm;
                 wrap: word-wrap;
+                horizontal-alignment: center;
             }
             Rectangle { height: 4px; }
             PrimaryButton {
-                text: "ENTRAR";
+                text: "ENTRAR COM E-MAIL E SENHA";
                 busy: root.busy;
-                enabled: email.text != "" && pass.text != "";
-                clicked => { root.login(email.text, pass.text); }
+                clicked => { root.start-sso(); }
             }
             GhostButton {
                 text: "ENTRAR COM CÓDIGO (COMO NA TV)";
                 clicked => { root.start-code(); }
             }
             Text {
-                text: "Seu e-mail e senha vão direto para a Crunchyroll. A sessão fica guardada no Gerenciador de Credenciais do Windows.";
+                text: "O login é feito na página oficial da Crunchyroll. O app só guarda a sessão, no Gerenciador de Credenciais do Windows.";
                 color: Theme.text-3;
                 font-family: Theme.font;
                 font-size: Theme.fs-xs;
                 wrap: word-wrap;
                 horizontal-alignment: center;
             }
+        }
+    }
+
+    // Official SSO page panel
+    sso-panel := Rectangle {
+        visible: sso-mode;
+        width: min(500px, root.width - 80px);
+        height: min(760px, root.height - 90px);
+        y: (root.height - self.height) / 2 + 14px;
+        border-radius: Theme.radius-lg;
+        background: #141519;
+        drop-shadow-blur: 60px;
+        drop-shadow-color: #000c;
+        clip: true;
+        Rectangle {
+            y: 0;
+            height: 56px;
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 16px;
+                spacing: 6px;
+                IconButton {
+                    y: (parent.height - self.height) / 2;
+                    icon: Icons.chevron-left;
+                    clicked => { root.cancel-sso(); }
+                }
+                Text {
+                    text: "Entrar na Crunchyroll";
+                    color: Theme.text;
+                    font-family: Theme.display-font;
+                    font-weight: 800;
+                    font-size: Theme.fs-lg;
+                    vertical-alignment: center;
+                }
+                Rectangle { horizontal-stretch: 1; }
+                if sso-loading: Spinner { size: 32px; y: (parent.height - self.height) / 2; }
+            }
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.outline;
+            }
+        }
+        sso-area := Rectangle {
+            x: 0;
+            y: 56px;
+            width: parent.width;
+            height: parent.height - 56px;
+            background: #000;
         }
     }
 
@@ -323,7 +379,6 @@ export component LoginPage inherits Rectangle {
             }
         }
     }
-    init => { email.focus-input(); }
 }
 
 // ----------------------------------------------------------------- profiles
