@@ -4,7 +4,7 @@
 use crate::app::App;
 use cr_core::session::{self, Session};
 use cr_core::{DrmSystem, Playback};
-use cr_player::{Bounds, Player, PlayerEvent, ProxyHandler, ProxyRequest};
+use cr_player::{Bounds, Player, PlayerEvent, ProxyHandler, ProxyRequest, ProxyResponse};
 use slint::ComponentHandle;
 use std::cell::{Cell, RefCell};
 use std::io::Write;
@@ -158,24 +158,43 @@ impl PlayerCtl {
     fn proxy(&self) -> ProxyHandler {
         let active = self.active.clone();
         let rt = self.rt.clone();
+        // one pooled HTTP client for segments (keeps CDN connections alive)
+        let seg_http = reqwest::Client::builder()
+            .user_agent("Crunchyroll/3.126.0 Android/14 okhttp/4.12.0")
+            .pool_max_idle_per_host(8)
+            .build()
+            .unwrap_or_default();
         Arc::new(move |req: ProxyRequest, reply| {
             let a = active.lock().unwrap().clone();
+            let seg_http = seg_http.clone();
             rt.spawn(async move {
                 let Some(a) = a else {
                     return reply(Err("nenhum vídeo ativo".into()));
+                };
+                let kind = match &req {
+                    ProxyRequest::Manifest => "manifesto",
+                    ProxyRequest::License { .. } => "licença",
+                    ProxyRequest::Text { .. } => "legenda",
+                    ProxyRequest::Segment { .. } => "segmento",
                 };
                 let result = match req {
                     ProxyRequest::Manifest => a
                         .session
                         .manifest(&a.pb)
                         .await
-                        .map(|m| ("application/dash+xml".to_string(), m.into_bytes())),
+                        .map(|m| ProxyResponse::ok("application/dash+xml", m.into_bytes())),
                     ProxyRequest::License { system, challenge } => {
                         let sys = if system == "playready" { DrmSystem::PlayReady } else { DrmSystem::Widevine };
-                        a.session.license(&a.pb, sys, challenge).await.map(|b| ("application/octet-stream".to_string(), b))
+                        a.session.license(&a.pb, sys, challenge).await.map(|b| ProxyResponse::ok("application/octet-stream", b))
                     }
                     ProxyRequest::Text { url } => fetch_text(&a.session, &url).await,
+                    ProxyRequest::Segment { url, range } => fetch_segment(&seg_http, &url, range.as_deref()).await,
                 };
+                match &result {
+                    Ok(r) if kind == "segmento" => tracing::debug!("proxy segmento: {} {} bytes", r.status, r.body.len()),
+                    Ok(r) => tracing::info!("proxy {kind}: {} {} {} bytes", r.status, r.mime, r.body.len()),
+                    Err(e) => tracing::warn!("proxy {kind}: {e:#}"),
+                }
                 reply(result.map_err(|e| format!("{e:#}")));
             });
         })
@@ -321,9 +340,31 @@ fn drm_order() -> Vec<&'static str> {
     }
 }
 
-async fn fetch_text(s: &Session, url: &str) -> anyhow::Result<(String, Vec<u8>)> {
+async fn fetch_text(s: &Session, url: &str) -> anyhow::Result<ProxyResponse> {
     let body = s.cr.client().get(url).send().await?.error_for_status()?.bytes().await?;
-    Ok(("text/plain; charset=utf-8".into(), body.to_vec()))
+    Ok(ProxyResponse::ok("text/plain; charset=utf-8", body.to_vec()))
+}
+
+/// Fetches a CDN segment natively (no web origin), honoring byte ranges.
+async fn fetch_segment(http: &reqwest::Client, url: &str, range: Option<&str>) -> anyhow::Result<ProxyResponse> {
+    let mut req = http.get(url);
+    if let Some(r) = range {
+        req = req.header("Range", r);
+    }
+    let resp = req.send().await?;
+    let status = resp.status().as_u16();
+    let mime = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+    let content_range = resp.headers().get("content-range").and_then(|v| v.to_str().ok()).map(String::from);
+    let body = resp.bytes().await?.to_vec();
+    if status >= 400 {
+        anyhow::bail!("CDN respondeu {status} para {url}");
+    }
+    Ok(ProxyResponse { status, mime, content_range, body })
 }
 
 /// Appends a line to the playback check log (used to confirm the 1080p test).

@@ -474,6 +474,9 @@ impl App {
         if let Ok(page) = std::env::var("CR_DEV_PAGE") {
             self.navigate(page);
         }
+        if let Ok(id) = std::env::var("CR_DEV_PLAY") {
+            self.play(id, false);
+        }
         if let Ok(id) = std::env::var("CR_DEV_DETAIL") {
             self.open_detail(id);
         }

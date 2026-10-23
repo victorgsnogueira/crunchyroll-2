@@ -1251,6 +1251,7 @@ dependencies = [
  "cr-core",
  "cr-player",
  "raw-window-handle",
+ "reqwest",
  "serde",
  "serde_json",
  "slint",

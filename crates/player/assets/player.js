@@ -77,6 +77,13 @@ async function load(info, opts) {
       abr: { enabled: true, defaultBandwidthEstimate: 8_000_000 },
       preferredAudioLanguage: "",
     });
+    // CDN segments go through the app (the CDN rejects web-page origins).
+    player.getNetworkingEngine().registerRequestFilter((type, request) => {
+      if (type === shaka.net.NetworkingEngine.RequestType.SEGMENT) {
+        request.uris = request.uris.map((u) =>
+          u.startsWith("https://") ? `${location.origin}/proxy/seg?u=${encodeURIComponent(u)}` : u);
+      }
+    });
     player.addEventListener("error", (e) => fail(e.detail));
     player.addEventListener("adaptation", reportStats);
     player.addEventListener("variantchanged", reportStats);
@@ -104,7 +111,16 @@ function fail(err) {
   $("error-msg").textContent = msg;
   $("error").classList.remove("hidden");
   $("loading").classList.add("off");
-  host({ type: "error", message: msg, code: (err && err.code) || 0 });
+  // technical detail goes to the app log (URL, HTTP status, response start)
+  let detail = "";
+  try {
+    detail = JSON.stringify((err && err.data) || [], (k, v) => {
+      if (v instanceof ArrayBuffer) return new TextDecoder().decode(v.slice(0, 300));
+      if (ArrayBuffer.isView(v)) return new TextDecoder().decode(v.buffer.slice(0, 300));
+      return v;
+    }).slice(0, 1500);
+  } catch (_) {}
+  host({ type: "error", message: `${msg} ${detail}`, code: (err && err.code) || 0 });
 }
 
 // --------------------------------------------------------------- subtitles

@@ -25,10 +25,27 @@ pub enum ProxyRequest {
     Manifest,
     License { system: String, challenge: Vec<u8> },
     Text { url: String },
+    /// Video/audio segment from the CDN. The CDN rejects requests coming from a
+    /// web page origin (hotlink protection), so the app fetches it natively.
+    Segment { url: String, range: Option<String> },
 }
 
-/// Answer for a `ProxyRequest`: content type + body, or an error message.
-pub type ProxyResult = std::result::Result<(String, Vec<u8>), String>;
+/// Answer for a `ProxyRequest`.
+#[derive(Debug)]
+pub struct ProxyResponse {
+    pub status: u16,
+    pub mime: String,
+    pub content_range: Option<String>,
+    pub body: Vec<u8>,
+}
+
+impl ProxyResponse {
+    pub fn ok(mime: impl Into<String>, body: Vec<u8>) -> Self {
+        Self { status: 200, mime: mime.into(), content_range: None, body }
+    }
+}
+
+pub type ProxyResult = std::result::Result<ProxyResponse, String>;
 pub type Reply = Box<dyn FnOnce(ProxyResult) + Send>;
 pub type ProxyHandler = Arc<dyn Fn(ProxyRequest, Reply) + Send + Sync>;
 
@@ -196,13 +213,27 @@ fn asset(path: &str) -> Option<Asset> {
 }
 
 fn respond(responder: RequestAsyncResponder, status: StatusCode, mime: &str, body: Cow<'static, [u8]>) {
-    let resp = Response::builder()
+    respond_full(responder, status, mime, None, body)
+}
+
+fn respond_full(
+    responder: RequestAsyncResponder,
+    status: StatusCode,
+    mime: &str,
+    content_range: Option<&str>,
+    body: Cow<'static, [u8]>,
+) {
+    let mut b = Response::builder()
         .status(status)
         .header("Content-Type", mime)
         .header("Cache-Control", "no-store")
+        .header("Accept-Ranges", "bytes")
         .header("Access-Control-Allow-Origin", "*")
-        .body(body)
-        .unwrap_or_else(|_| Response::new(Cow::Borrowed(&b""[..])));
+        .header("Access-Control-Expose-Headers", "Content-Range, Content-Length");
+    if let Some(cr) = content_range {
+        b = b.header("Content-Range", cr);
+    }
+    let resp = b.body(body).unwrap_or_else(|_| Response::new(Cow::Borrowed(&b""[..])));
     responder.respond(resp);
 }
 
@@ -264,11 +295,21 @@ fn route(req: Request<Vec<u8>>, responder: RequestAsyncResponder, proxy: &ProxyH
             Some(url) if url.starts_with("https://") => ProxyRequest::Text { url },
             _ => return respond(responder, StatusCode::BAD_REQUEST, "text/plain", Cow::Borrowed(b"bad url")),
         },
+        "/proxy/seg" => match query_param(&query, "u") {
+            Some(url) if url.starts_with("https://") => {
+                let range = req.headers().get("range").and_then(|v| v.to_str().ok()).map(String::from);
+                ProxyRequest::Segment { url, range }
+            }
+            _ => return respond(responder, StatusCode::BAD_REQUEST, "text/plain", Cow::Borrowed(b"bad url")),
+        },
         _ => return respond(responder, StatusCode::NOT_FOUND, "text/plain", Cow::Borrowed(b"not found")),
     };
 
     let reply: Reply = Box::new(move |result| match result {
-        Ok((mime, body)) => respond(responder, StatusCode::OK, &mime, Cow::Owned(body)),
+        Ok(r) => {
+            let status = StatusCode::from_u16(r.status).unwrap_or(StatusCode::OK);
+            respond_full(responder, status, &r.mime, r.content_range.as_deref(), Cow::Owned(r.body))
+        }
         Err(msg) => {
             tracing::warn!("proxy do player: {msg}");
             respond(responder, StatusCode::BAD_GATEWAY, "text/plain; charset=utf-8", Cow::Owned(msg.into_bytes()))
