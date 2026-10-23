@@ -55,6 +55,9 @@ fn wire(ui: &AppWindow, app: &Rc<App>) {
     }
 
     on!(on_login, |a, e, p| a.login(e.to_string(), p.to_string()));
+    on!(on_start_code, |a| a.start_code());
+    on!(on_cancel_code, |a| a.cancel_code());
+    on!(on_open_activate, |a| a.open_activate());
     on!(on_pick_profile, |a, id| a.pick_profile(id.to_string()));
     on!(on_logout, |a| a.logout());
     on!(on_navigate, |a, p| a.navigate(p.to_string()));

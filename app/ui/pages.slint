@@ -125,7 +125,16 @@ export component SplashPage inherits Rectangle {
 export component LoginPage inherits Rectangle {
     in property <string> error;
     in property <bool> busy;
+    // TV-style code login
+    in property <bool> code-mode;
+    in property <string> code;
+    in property <[string]> code-chars;
+    in property <bool> code-expired;
+    in property <string> code-error;
     callback login(string, string);
+    callback start-code();
+    callback cancel-code();
+    callback open-activate();
     background: Theme.bg;
 
     // Brand backdrop: soft orange glow + oversized symbol.
@@ -147,6 +156,7 @@ export component LoginPage inherits Rectangle {
     }
 
     panel := Rectangle {
+        visible: !code-mode;
         width: 440px;
         height: lay.preferred-height;
         border-radius: Theme.radius-lg;
@@ -197,6 +207,10 @@ export component LoginPage inherits Rectangle {
                 enabled: email.text != "" && pass.text != "";
                 clicked => { root.login(email.text, pass.text); }
             }
+            GhostButton {
+                text: "ENTRAR COM CÓDIGO (COMO NA TV)";
+                clicked => { root.start-code(); }
+            }
             Text {
                 text: "Seu e-mail e senha vão direto para a Crunchyroll. A sessão fica guardada no Gerenciador de Credenciais do Windows.";
                 color: Theme.text-3;
@@ -204,6 +218,108 @@ export component LoginPage inherits Rectangle {
                 font-size: Theme.fs-xs;
                 wrap: word-wrap;
                 horizontal-alignment: center;
+            }
+        }
+    }
+
+    // Code login panel
+    if code-mode: Rectangle {
+        width: 520px;
+        height: clay.preferred-height;
+        border-radius: Theme.radius-lg;
+        background: #141519F2;
+        drop-shadow-blur: 60px;
+        drop-shadow-color: #000c;
+        clay := VerticalLayout {
+            padding: 44px;
+            spacing: 18px;
+            Rectangle {
+                height: 44px;
+                clip: true;
+                Image {
+                    source: Icons.logo;
+                    height: 40px;
+                    width: 40px * 303 / 52;
+                    x: (parent.width - self.width) / 2;
+                }
+            }
+            Text {
+                text: "Entrar com código";
+                color: Theme.text;
+                font-family: Theme.display-font;
+                font-weight: 800;
+                font-size: Theme.fs-xl;
+                horizontal-alignment: center;
+            }
+            Text {
+                text: "Abra crunchyroll.com/activate no navegador em que você já está logado e digite o código abaixo. O app entra sozinho assim que você aprovar.";
+                color: Theme.text-2;
+                font-family: Theme.font;
+                font-size: Theme.fs-md;
+                wrap: word-wrap;
+                horizontal-alignment: center;
+            }
+            HorizontalLayout {
+                alignment: center;
+                spacing: 10px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                if code == "" && code-error == "": Spinner { }
+                for ch in code-chars: Rectangle {
+                    width: 56px;
+                    height: 70px;
+                    border-radius: Theme.radius-md;
+                    background: Theme.surface-2;
+                    border-width: 2px;
+                    border-color: code-expired ? Theme.text-3 : Theme.orange;
+                    Text {
+                        text: ch;
+                        color: code-expired ? Theme.text-3 : Theme.text;
+                        font-family: Theme.display-font;
+                        font-weight: 800;
+                        font-size: 34px;
+                    }
+                }
+            }
+            if code-error != "": Text {
+                text: code-error;
+                color: Theme.danger;
+                font-family: Theme.font;
+                font-size: Theme.fs-sm;
+                wrap: word-wrap;
+                horizontal-alignment: center;
+            }
+            if code-expired: Text {
+                text: "O código expirou.";
+                color: Theme.text-2;
+                font-family: Theme.font;
+                font-size: Theme.fs-sm;
+                horizontal-alignment: center;
+            }
+            if !code-expired && code != "": HorizontalLayout {
+                alignment: center;
+                spacing: 10px;
+                Spinner { size: 28px; }
+                Text {
+                    text: "Aguardando aprovação…";
+                    color: Theme.text-2;
+                    font-family: Theme.font;
+                    font-size: Theme.fs-sm;
+                    vertical-alignment: center;
+                }
+            }
+            if !code-expired: PrimaryButton {
+                text: "ABRIR CRUNCHYROLL.COM/ACTIVATE";
+                enabled: code != "";
+                clicked => { root.open-activate(); }
+            }
+            if code-expired || code-error != "": PrimaryButton {
+                text: "GERAR NOVO CÓDIGO";
+                clicked => { root.start-code(); }
+            }
+            GhostButton {
+                text: "VOLTAR PARA E-MAIL E SENHA";
+                clicked => { root.cancel-code(); }
             }
         }
     }

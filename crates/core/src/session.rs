@@ -110,6 +110,37 @@ fn builder() -> crunchyroll_rs::auth::CrunchyrollBuilder {
         .preferred_audio_locale(Locale::ja_JP)
 }
 
+/// TV-style sign-in: the user approves `user_code` at crunchyroll.com/activate.
+#[derive(Clone, Debug)]
+pub struct DeviceLogin {
+    pub user_code: String,
+    device_code: String,
+    pub interval: std::time::Duration,
+    pub expires_at: std::time::Instant,
+}
+
+pub const ACTIVATE_URL: &str = "https://www.crunchyroll.com/activate";
+
+/// Crunchyroll reports the polling interval in ms (sometimes seconds); keep it sane.
+pub fn normalize_interval_ms(raw: u64) -> u64 {
+    let ms = if raw > 100 { raw } else if raw == 0 { 5000 } else { raw * 1000 };
+    ms.clamp(1000, 5000)
+}
+
+async fn auth_http() -> Result<(reqwest::Client, TvCredentials)> {
+    let creds = tv_credentials(false).await.context("credenciais do app de TV indisponíveis")?;
+    let http = crunchyroll_rs::auth::CrunchyrollBuilder::predefined_client_builder()
+        .user_agent(creds.user_agent.clone())
+        .build()?;
+    Ok((http, creds))
+}
+
+pub enum DevicePoll {
+    Pending,
+    Done(Session),
+    Expired,
+}
+
 pub struct Session {
     pub cr: Crunchyroll,
     pub account_id: String,
@@ -136,6 +167,77 @@ impl Session {
                 Err(friendly_error(&e))
             }
         }
+    }
+
+    /// Starts a TV-style login and returns the code to show the user.
+    pub async fn start_device_login() -> Result<DeviceLogin> {
+        #[derive(serde::Deserialize)]
+        struct Resp {
+            user_code: String,
+            device_code: String,
+            #[serde(default)]
+            interval: u64,
+            #[serde(default)]
+            expires_in: u64,
+        }
+        let (http, creds) = auth_http().await?;
+        let body = format!(
+            "device_id={}&device_type=ANDROIDTV&device_name=Crunchyroll%20Desktop",
+            device_id()
+        );
+        let resp = http
+            .post("https://www.crunchyroll.com/auth/v1/device/code")
+            .header("Authorization", format!("Basic {}", creds.basic_auth_token))
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body(body)
+            .send()
+            .await?;
+        let status = resp.status();
+        let text = resp.text().await?;
+        if !status.is_success() {
+            anyhow::bail!("a Crunchyroll recusou gerar o código ({status})");
+        }
+        let r: Resp = serde_json::from_str(&text).context("resposta inesperada ao gerar o código")?;
+        Ok(DeviceLogin {
+            user_code: r.user_code.to_uppercase(),
+            device_code: r.device_code,
+            interval: std::time::Duration::from_millis(normalize_interval_ms(r.interval)),
+            expires_at: std::time::Instant::now()
+                + std::time::Duration::from_secs(if r.expires_in == 0 { 300 } else { r.expires_in }),
+        })
+    }
+
+    /// Checks once whether the code was approved.
+    pub async fn poll_device_login(d: &DeviceLogin) -> Result<DevicePoll> {
+        if std::time::Instant::now() >= d.expires_at {
+            return Ok(DevicePoll::Expired);
+        }
+        let (http, creds) = auth_http().await?;
+        let resp = http
+            .post("https://www.crunchyroll.com/auth/v1/device/token")
+            .header("Authorization", format!("Basic {}", creds.basic_auth_token))
+            .json(&serde_json::json!({ "device_id": device_id(), "device_code": d.device_code }))
+            .send()
+            .await?;
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if status.is_success() {
+            let v: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+            if let Some(refresh) = v.get("refresh_token").and_then(|t| t.as_str()) {
+                let cr = tv_builder(false)
+                    .await
+                    .login_with_refresh_token(refresh, device())
+                    .await
+                    .map_err(|e| anyhow::anyhow!(friendly_error(&e)))?;
+                tracing::info!("login por código ok");
+                return Ok(DevicePoll::Done(Self::finish(cr).await?));
+            }
+            return Ok(DevicePoll::Pending);
+        }
+        if text.to_lowercase().contains("expired") {
+            return Ok(DevicePoll::Expired);
+        }
+        Ok(DevicePoll::Pending)
     }
 
     /// Logs in with the saved refresh token, if there is one.
@@ -233,6 +335,15 @@ pub fn avatar_url(avatar: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn device_interval_is_normalized() {
+        assert_eq!(normalize_interval_ms(500), 1000);
+        assert_eq!(normalize_interval_ms(3000), 3000);
+        assert_eq!(normalize_interval_ms(5), 5000);
+        assert_eq!(normalize_interval_ms(2), 2000);
+        assert_eq!(normalize_interval_ms(0), 5000);
+    }
 
     #[test]
     fn avatar_urls() {

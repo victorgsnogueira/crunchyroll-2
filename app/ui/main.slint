@@ -233,6 +233,11 @@ export component AppWindow inherits Window {
     // login / profiles
     in property <string> login-error;
     in property <bool> login-busy;
+    in property <bool> code-mode;
+    in property <string> login-code;
+    in property <[string]> login-code-chars;
+    in property <bool> code-expired;
+    in property <string> code-error;
     in property <[ProfileData]> profiles;
     in property <string> profile-name;
     in property <image> profile-avatar;
@@ -284,6 +289,9 @@ export component AppWindow inherits Window {
 
     // ---- callbacks
     callback login(string, string);
+    callback start-code();
+    callback cancel-code();
+    callback open-activate();
     callback pick-profile(string);
     callback logout();
     callback navigate(string);
@@ -322,7 +330,15 @@ export component AppWindow inherits Window {
     if screen == "login": LoginPage {
         error: root.login-error;
         busy: root.login-busy;
+        code-mode: root.code-mode;
+        code: root.login-code;
+        code-chars: root.login-code-chars;
+        code-expired: root.code-expired;
+        code-error: root.code-error;
         login(e, p) => { root.login(e, p); }
+        start-code => { root.start-code(); }
+        cancel-code => { root.cancel-code(); }
+        open-activate => { root.open-activate(); }
     }
 
     if screen == "profiles": ProfilesPage {

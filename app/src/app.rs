@@ -47,6 +47,10 @@ pub struct App {
     toast_gen: Cell<u64>,
     pub player: PlayerCtl,
     persist_timer: slint::Timer,
+    code_seq: Cell<u64>,
+    code_timer: slint::Timer,
+    code_polling: Cell<bool>,
+    code_login: RefCell<Option<session::DeviceLogin>>,
 }
 
 impl App {
@@ -77,6 +81,10 @@ impl App {
             toast_gen: Cell::new(0),
             player: PlayerCtl::new(rt),
             persist_timer: slint::Timer::default(),
+            code_seq: Cell::new(0),
+            code_timer: slint::Timer::default(),
+            code_polling: Cell::new(false),
+            code_login: RefCell::new(None),
         });
         app.bind_models(ui);
         app
@@ -194,23 +202,107 @@ impl App {
             let ui = app.ui();
             ui.set_login_busy(false);
             match r {
-                Ok(s) => {
-                    let s = Arc::new(s);
-                    *app.session.borrow_mut() = Some(s.clone());
-                    app.run(async move { s.profiles().await }, |app, p| match p {
-                        Ok(p) if p.len() > 1 => {
-                            app.set_profiles(&p);
-                            app.ui().set_screen("profiles".into());
-                        }
-                        _ => {
-                            let s = app.session().unwrap();
-                            app.enter(s);
-                        }
-                    });
-                }
+                Ok(s) => app.after_login(s),
                 Err(msg) => ui.set_login_error(msg.into()),
             }
         });
+    }
+
+    fn after_login(self: &Rc<Self>, s: Session) {
+        let s = Arc::new(s);
+        *self.session.borrow_mut() = Some(s.clone());
+        self.run(async move { s.profiles().await }, |app, p| match p {
+            Ok(p) if p.len() > 1 => {
+                app.set_profiles(&p);
+                app.ui().set_screen("profiles".into());
+            }
+            _ => {
+                let s = app.session().unwrap();
+                app.enter(s);
+            }
+        });
+    }
+
+    // ------------------------------------------------------- code login
+
+    pub fn start_code(self: &Rc<Self>) {
+        let seq = self.code_seq.get() + 1;
+        self.code_seq.set(seq);
+        self.code_timer.stop();
+        self.code_polling.set(false);
+        let ui = self.ui();
+        ui.set_code_mode(true);
+        ui.set_code_expired(false);
+        ui.set_code_error("".into());
+        ui.set_login_code("".into());
+        ui.set_login_code_chars(ModelRc::default());
+        self.run(Session::start_device_login(), move |app, r| {
+            if app.code_seq.get() != seq {
+                return;
+            }
+            let ui = app.ui();
+            match r {
+                Ok(d) => {
+                    ui.set_login_code(d.user_code.clone().into());
+                    let chars: Vec<SharedString> = d.user_code.chars().map(|c| c.to_string().into()).collect();
+                    ui.set_login_code_chars(ModelRc::new(VecModel::from(chars)));
+                    let interval = d.interval;
+                    *app.code_login.borrow_mut() = Some(d);
+                    let weak = Rc::downgrade(app);
+                    app.code_timer.start(slint::TimerMode::Repeated, interval, move || {
+                        if let Some(app) = weak.upgrade() {
+                            app.poll_code(seq);
+                        }
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!("código de login falhou: {e:#}");
+                    ui.set_code_error(format!("Não foi possível gerar o código: {e:#}").into());
+                }
+            }
+        });
+    }
+
+    fn poll_code(self: &Rc<Self>, seq: u64) {
+        if self.code_polling.get() || self.code_seq.get() != seq {
+            return;
+        }
+        let Some(d) = self.code_login.borrow().clone() else { return };
+        self.code_polling.set(true);
+        self.run(async move { Session::poll_device_login(&d).await }, move |app, r| {
+            app.code_polling.set(false);
+            if app.code_seq.get() != seq {
+                return;
+            }
+            match r {
+                Ok(session::DevicePoll::Pending) => {}
+                Ok(session::DevicePoll::Expired) => {
+                    app.code_timer.stop();
+                    app.ui().set_code_expired(true);
+                }
+                Ok(session::DevicePoll::Done(s)) => {
+                    app.code_timer.stop();
+                    app.ui().set_code_mode(false);
+                    app.after_login(s);
+                }
+                Err(e) => tracing::warn!("consulta do código falhou: {e:#}"),
+            }
+        });
+    }
+
+    pub fn cancel_code(self: &Rc<Self>) {
+        self.code_seq.set(self.code_seq.get() + 1);
+        self.code_timer.stop();
+        *self.code_login.borrow_mut() = None;
+        self.ui().set_code_mode(false);
+    }
+
+    pub fn open_activate(self: &Rc<Self>) {
+        let code = self.ui().get_login_code().to_string();
+        let url = format!("{}?code={}", session::ACTIVATE_URL, code);
+        if let Err(e) = std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", &url]).spawn() {
+            self.toast(format!("Não abriu o navegador: {e}"));
+        }
     }
 
     fn set_profiles(&self, p: &[cr_core::models::ProfileInfo]) {
