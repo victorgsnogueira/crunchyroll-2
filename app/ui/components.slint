@@ -167,6 +167,7 @@ export component TextField inherits Rectangle {
     out property <bool> focused: input.has-focus;
     callback accepted();
     callback edited(string);
+    property <bool> reveal: false;
     height: 62px;
     Text {
         x: 0;
@@ -182,13 +183,13 @@ export component TextField inherits Rectangle {
     }
     input := TextInput {
         x: 0;
-        width: parent.width;
+        width: parent.width - (password ? 40px : 0px);
         y: 22px;
         height: 32px;
         color: Theme.text;
         font-size: Theme.fs-md;
         font-family: Theme.font;
-        input-type: password ? InputType.password : InputType.text;
+        input-type: password && !reveal ? InputType.password : InputType.text;
         vertical-alignment: center;
         selection-background-color: Theme.orange-soft;
         accepted => { root.accepted(); }
@@ -208,8 +209,19 @@ export component TextField inherits Rectangle {
         animate width { duration: Theme.normal; easing: Theme.ease; }
     }
     TouchArea {
+        width: input.width;
+        x: 0;
         mouse-cursor: MouseCursor.text;
         clicked => { input.focus(); }
+    }
+    if password: IconButton {
+        x: parent.width - self.width + 4px;
+        y: 18px;
+        size: 40px;
+        icon-size: 20px;
+        icon: reveal ? Icons.eye-off : Icons.eye;
+        tint: Theme.text-2;
+        clicked => { reveal = !reveal; input.focus(); }
     }
     public function focus-input() { input.focus(); }
 }
