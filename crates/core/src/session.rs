@@ -47,52 +47,61 @@ pub fn device_id() -> String {
     id
 }
 
-/// Which official app identity the session uses. Refresh tokens only work with
-/// the identity that created them, so it is saved next to the session.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Platform {
-    Tv,
-    Phone,
+/// The official apps' client credentials rotate; the copy bundled in
+/// crunchyroll-rs goes stale. We fetch the current Android TV credentials from
+/// crunchy-labs/artifacts and keep a local copy (refreshed daily).
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct TvCredentials {
+    basic_auth_token: String,
+    user_agent: String,
+    fetched_at: u64,
 }
 
-fn saved_platform() -> Platform {
-    match std::fs::read_to_string(data_dir().join("platform")).as_deref().map(str::trim) {
-        Ok("phone") => Platform::Phone,
-        _ => Platform::Tv,
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+async fn tv_credentials(force_refresh: bool) -> Option<TvCredentials> {
+    let path = data_dir().join("tv_credentials.json");
+    let cached: Option<TvCredentials> = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice(&b).ok());
+    if let Some(c) = &cached {
+        if !force_refresh && now_secs().saturating_sub(c.fetched_at) < 24 * 3600 {
+            return cached;
+        }
+    }
+    match crunchyroll_rs::auth::platform_credentials::get_platform_credentials().await {
+        Ok(c) => {
+            let creds = TvCredentials {
+                basic_auth_token: c.android_tv.basic_auth_token.clone(),
+                user_agent: c.android_tv_user_agent(),
+                fetched_at: now_secs(),
+            };
+            let _ = std::fs::create_dir_all(data_dir());
+            let _ = std::fs::write(&path, serde_json::to_vec(&creds).unwrap_or_default());
+            Some(creds)
+        }
+        Err(e) => {
+            tracing::warn!("não buscou credenciais atuais do app de TV: {e}");
+            cached
+        }
     }
 }
 
-fn save_platform(p: Platform) {
-    let _ = std::fs::create_dir_all(data_dir());
-    let _ = std::fs::write(data_dir().join("platform"), if p == Platform::Phone { "phone" } else { "tv" });
-}
-
-fn device(p: Platform) -> DeviceIdentifier {
+fn device() -> DeviceIdentifier {
     DeviceIdentifier {
         device_id: device_id(),
-        device_type: match p {
-            Platform::Tv => "ANDROIDTV".into(),
-            Platform::Phone => "SM-G980F".into(),
-        },
+        device_type: "ANDROIDTV".into(),
         device_name: Some("Crunchyroll Desktop".into()),
     }
 }
 
-async fn builder_for(p: Platform) -> crunchyroll_rs::auth::CrunchyrollBuilder {
-    let b = Crunchyroll::builder().locale(Locale::pt_BR).preferred_audio_locale(Locale::ja_JP);
-    if p == Platform::Phone {
-        match crunchyroll_rs::auth::platform_credentials::get_platform_credentials().await {
-            Ok(c) => {
-                return b.platform(
-                    crunchyroll_rs::auth::DevicePlatform::AndroidPhone,
-                    c.android_phone.basic_auth_token.clone(),
-                    Some(c.android_phone_user_agent()),
-                );
-            }
-            Err(e) => tracing::warn!("credenciais do app de celular indisponíveis: {e}"),
-        }
+/// Builder using the current TV credentials (falls back to the bundled ones).
+async fn tv_builder(force_refresh: bool) -> crunchyroll_rs::auth::CrunchyrollBuilder {
+    let b = builder();
+    match tv_credentials(force_refresh).await {
+        Some(c) => b.platform(crunchyroll_rs::auth::DevicePlatform::TvAndroid, c.basic_auth_token, Some(c.user_agent)),
+        None => b,
     }
-    b
 }
 
 fn builder() -> crunchyroll_rs::auth::CrunchyrollBuilder {
@@ -109,22 +118,24 @@ pub struct Session {
 
 impl Session {
     pub async fn login(email: &str, password: &str) -> std::result::Result<Session, String> {
-        let mut first_err = None;
-        for p in [Platform::Tv, Platform::Phone] {
-            match builder_for(p).await.login_with_credentials(email, password, device(p)).await {
-                Ok(cr) => {
-                    tracing::info!("login ok ({p:?})");
-                    save_platform(p);
-                    return Self::finish(cr).await.map_err(|e| format!("{e:#}"));
-                }
-                Err(e) => {
-                    // never logs the password; the error text comes from the server
-                    tracing::warn!("login falhou ({p:?}): {:?} {e}", e.kind());
-                    first_err.get_or_insert(e);
-                }
+        let mut result = tv_builder(false).await.login_with_credentials(email, password, device()).await;
+        if let Err(e) = &result {
+            // a stale cached client token also looks like "wrong password": refresh once and retry
+            tracing::warn!("login falhou: {:?} {e}", e.kind());
+            if matches!(e.kind(), ErrorKind::Authentication | ErrorKind::Request { .. }) {
+                result = tv_builder(true).await.login_with_credentials(email, password, device()).await;
             }
         }
-        Err(friendly_error(&first_err.expect("ao menos uma tentativa")))
+        match result {
+            Ok(cr) => {
+                tracing::info!("login ok");
+                Self::finish(cr).await.map_err(|e| format!("{e:#}"))
+            }
+            Err(e) => {
+                tracing::warn!("login falhou: {:?} {e}", e.kind());
+                Err(friendly_error(&e))
+            }
+        }
     }
 
     /// Logs in with the saved refresh token, if there is one.
@@ -132,13 +143,8 @@ impl Session {
         let token = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).ok()?.get_password().ok()?;
         let profile = std::fs::read_to_string(data_dir().join("profile_id")).ok();
         let result = match profile.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
-            Some(p) => {
-                builder_for(saved_platform())
-                    .await
-                    .login_with_refresh_token_profile_id(token.as_str(), p, device(saved_platform()))
-                    .await
-            }
-            None => builder_for(saved_platform()).await.login_with_refresh_token(&token, device(saved_platform())).await,
+            Some(p) => tv_builder(false).await.login_with_refresh_token_profile_id(token.as_str(), p, device()).await,
+            None => tv_builder(false).await.login_with_refresh_token(&token, device()).await,
         };
         match result {
             Ok(cr) => Self::finish(cr).await.ok(),
@@ -154,7 +160,7 @@ impl Session {
 
     /// Development only: browse the catalog without an account (no playback/lists).
     pub async fn anonymous() -> std::result::Result<Session, String> {
-        let cr = builder().login_anonymously(device(Platform::Tv)).await.map_err(|e| friendly_error(&e))?;
+        let cr = builder().login_anonymously(device()).await.map_err(|e| friendly_error(&e))?;
         Ok(Session { cr, account_id: String::new(), email: "visitante (modo de teste)".into() })
     }
 
@@ -194,9 +200,9 @@ impl Session {
         let SessionToken::RefreshToken(token) = self.cr.session_token().await else {
             anyhow::bail!("sessão sem refresh token");
         };
-        let cr = builder_for(saved_platform())
+        let cr = tv_builder(false)
             .await
-            .login_with_refresh_token_profile_id(token.as_str(), profile_id, device(saved_platform()))
+            .login_with_refresh_token_profile_id(token.as_str(), profile_id, device())
             .await
             .map_err(|e| anyhow::anyhow!(friendly_error(&e)))?;
         let _ = std::fs::create_dir_all(data_dir());
