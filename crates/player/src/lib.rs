@@ -79,6 +79,7 @@ pub enum PlayerEvent {
     Fullscreen,
     Audio { media_id: String, position: f64 },
     Error { message: String, code: i64 },
+    Log { message: String },
 }
 
 pub struct Player {

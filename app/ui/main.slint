@@ -1,4 +1,4 @@
-import { Theme, Icons } from "theme.slint";
+import { Theme, Icons, Nav } from "theme.slint";
 import { CardData, RowData, HeroData, SeasonData, EpisodeData, DetailData, ProfileData, CalendarDayData, ListData, GenreData } from "data.slint";
 import { IconButton, NavItem, Toast, Spinner } from "components.slint";
 import { SplashPage, LoginPage, ProfilesPage, HomePage, SearchPage, BrowsePage, SimulcastPage, MyListPage, HistoryPage, DetailPage, AccountPage } from "pages.slint";
@@ -322,13 +322,35 @@ export component AppWindow inherits Window {
     callback window-close();
     callback window-resize(string);
     callback key-escape();
+    callback toggle-fullscreen();
 
     forward-focus: keys;
+    // Keyboard: the scope wraps every screen, so keys not used by a text field
+    // (or the player, which has its own) land here.
     keys := FocusScope {
-        key-pressed(e) => {
-            if (e.text == Key.Escape) { root.key-escape(); return accept; }
-            reject
+    key-pressed(e) => {
+        if (e.text == Key.Escape) { root.key-escape(); return accept; }
+        if (e.modifiers.alt && e.text == Key.LeftArrow) { root.key-escape(); return accept; }
+        if (e.text == Key.F11) { root.toggle-fullscreen(); return accept; }
+        if (root.screen != "main") { return reject; }
+        if ((e.modifiers.control && (e.text == "f" || e.text == "k")) || e.text == "/") { root.navigate("search"); return accept; }
+        if (e.modifiers.control) {
+            if (e.text == "1") { root.navigate("home"); return accept; }
+            if (e.text == "2") { root.navigate("search"); return accept; }
+            if (e.text == "3") { root.navigate("browse"); return accept; }
+            if (e.text == "4") { root.navigate("simulcast"); return accept; }
+            if (e.text == "5") { root.navigate("mylist"); return accept; }
+            if (e.text == "6") { root.navigate("history"); return accept; }
+            if (e.text == "7") { root.navigate("account"); return accept; }
         }
+        Nav.page = root.detail-open ? "detail" : root.page;
+        if (e.text == Key.DownArrow) { Nav.delta = 140px; Nav.seq += 1; return accept; }
+        if (e.text == Key.UpArrow) { Nav.delta = -140px; Nav.seq += 1; return accept; }
+        if (e.text == Key.PageDown || (e.text == " " && !e.modifiers.shift)) { Nav.delta = root.height * 0.85; Nav.seq += 1; return accept; }
+        if (e.text == Key.PageUp || (e.text == " " && e.modifiers.shift)) { Nav.delta = -root.height * 0.85; Nav.seq += 1; return accept; }
+        if (e.text == Key.Home) { Nav.delta = -1000000px; Nav.seq += 1; return accept; }
+        if (e.text == Key.End) { Nav.delta = 1000000px; Nav.seq += 1; return accept; }
+        reject
     }
 
     // ---- screens
@@ -503,5 +525,7 @@ export component AppWindow inherits Window {
         show: root.toast-visible;
     }
 
+    }
     public function focus-search() { search-page.focus-field(); }
+    public function refocus() { keys.focus(); }
 }

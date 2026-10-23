@@ -469,6 +469,7 @@ impl App {
         ui.set_page("home".into());
         ui.set_detail_open(false);
         ui.set_screen("main".into());
+        ui.invoke_refocus();
         self.load_home(true);
         // Development shortcuts for screenshots/tests.
         if let Ok(page) = std::env::var("CR_DEV_PAGE") {
@@ -520,6 +521,9 @@ impl App {
         let ui = self.ui();
         ui.set_detail_open(false);
         ui.set_page(page.clone().into());
+        if page != "search" {
+            ui.invoke_refocus();
+        }
         match page.as_str() {
             "home" => {}
             "search" => {
@@ -767,6 +771,7 @@ impl App {
     // -------------------------------------------------------------- detail
 
     pub fn open_detail(self: &Rc<Self>, id: String) {
+        self.ui().invoke_refocus();
         let seq = self.detail_gen.get() + 1;
         self.detail_gen.set(seq);
         let ui = self.ui();
@@ -898,6 +903,7 @@ impl App {
     }
 
     pub fn after_player_closed(self: &Rc<Self>) {
+        self.ui().invoke_refocus();
         // progress changed: refresh "continue watching" and the open detail page
         self.load_home(false);
         let ui = self.ui();

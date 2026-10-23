@@ -81,6 +81,10 @@ fn wire(ui: &AppWindow, app: &Rc<App>) {
     on!(on_delete_list, |a, id| a.delete_list(id.to_string()));
     on!(on_clear_history, |a| a.clear_history());
     on!(on_key_escape, |a| a.escape());
+    on!(on_toggle_fullscreen, |a| {
+        let on = !a.ui().get_fullscreen();
+        a.set_fullscreen(on);
+    });
 
     on!(on_window_drag, |a| {
         a.ui().window().with_winit_window(|w| {

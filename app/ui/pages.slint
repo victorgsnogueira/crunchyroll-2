@@ -1,6 +1,6 @@
-﻿import { Theme, Icons } from "theme.slint";
+﻿import { Theme, Icons, Nav } from "theme.slint";
 import { CardData, RowData, HeroData, SeasonData, EpisodeData, DetailData, ProfileData, CalendarDayData, CalendarItemData, ListData, GenreData } from "data.slint";
-import { Skeleton, Spinner, BrandLoader, PrimaryButton, GhostButton, IconButton, Chip, TextField, LazyImage, PosterCard, WideCard, CardRow, SectionTitle } from "components.slint";
+import { Skeleton, Spinner, BrandLoader, PrimaryButton, GhostButton, IconButton, Chip, TextField, LazyImage, PosterCard, WideCard, CardRow, SectionTitle, HStrip } from "components.slint";
 
 // ------------------------------------------------------------------ helpers
 
@@ -603,6 +603,14 @@ export component HomePage inherits Rectangle {
     callback card-clicked(CardData);
     property <length> hero-h: max(520px, root.height * 0.78);
     if loading && rows.length == 0: BrandLoader { }
+    // keyboard scrolling (see Nav)
+    property <int> nav-seq: Nav.seq;
+    changed nav-seq => {
+        if (Nav.page == "home") {
+            flick.content-y = clamp(flick.content-y - Nav.delta, min(0px, flick.height - flick.content-height), 0px);
+        }
+    }
+
     flick := Flickable {
         visible: !(loading && rows.length == 0);
         content-width: self.width;
@@ -639,6 +647,14 @@ export component SearchPage inherits Rectangle {
     in-out property <string> query;
     callback search(string);
     callback card-clicked(CardData);
+    // keyboard scrolling (see Nav)
+    property <int> nav-seq: Nav.seq;
+    changed nav-seq => {
+        if (Nav.page == "search") {
+            flick.content-y = clamp(flick.content-y - Nav.delta, min(0px, flick.height - flick.content-height), 0px);
+        }
+    }
+
     flick := Flickable {
         content-width: self.width;
         content-height: lay.preferred-height;
@@ -723,7 +739,15 @@ export component BrowsePage inherits Rectangle {
     in-out property <string> genre: "";
     callback changed(string, string);
     callback card-clicked(CardData);
-    Flickable {
+    // keyboard scrolling (see Nav)
+    property <int> nav-seq: Nav.seq;
+    changed nav-seq => {
+        if (Nav.page == "browse") {
+            flick.content-y = clamp(flick.content-y - Nav.delta, min(0px, flick.height - flick.content-height), 0px);
+        }
+    }
+
+    flick := Flickable {
         content-width: self.width;
         content-height: lay.preferred-height;
         lay := VerticalLayout {
@@ -750,9 +774,9 @@ export component BrowsePage inherits Rectangle {
                     clicked => { sort = "alphabetical"; root.changed(sort, genre); }
                 }
             }
-            Flickable {
+            HStrip {
                 height: 40px;
-                content-width: genre-row.preferred-width + Theme.gutter * 2;
+                content-w: genre-row.preferred-width + Theme.gutter * 2;
                 genre-row := HorizontalLayout {
                     x: Theme.gutter;
                     spacing: 8px;
@@ -789,7 +813,15 @@ export component SimulcastPage inherits Rectangle {
     in-out property <int> day: 0;
     callback card-clicked(CardData);
     callback open-episode(string, string);
-    Flickable {
+    // keyboard scrolling (see Nav)
+    property <int> nav-seq: Nav.seq;
+    changed nav-seq => {
+        if (Nav.page == "simulcast") {
+            flick.content-y = clamp(flick.content-y - Nav.delta, min(0px, flick.height - flick.content-height), 0px);
+        }
+    }
+
+    flick := Flickable {
         content-width: self.width;
         content-height: lay.preferred-height;
         lay := VerticalLayout {
@@ -903,7 +935,15 @@ export component MyListPage inherits Rectangle {
     callback select-list(string);
     callback create-list(string);
     callback delete-list(string);
-    Flickable {
+    // keyboard scrolling (see Nav)
+    property <int> nav-seq: Nav.seq;
+    changed nav-seq => {
+        if (Nav.page == "mylist") {
+            flick.content-y = clamp(flick.content-y - Nav.delta, min(0px, flick.height - flick.content-height), 0px);
+        }
+    }
+
+    flick := Flickable {
         content-width: self.width;
         content-height: lay.preferred-height;
         lay := VerticalLayout {
@@ -1038,7 +1078,15 @@ export component HistoryPage inherits Rectangle {
     callback card-clicked(CardData);
     callback clear();
     property <bool> confirm: false;
-    Flickable {
+    // keyboard scrolling (see Nav)
+    property <int> nav-seq: Nav.seq;
+    changed nav-seq => {
+        if (Nav.page == "history") {
+            flick.content-y = clamp(flick.content-y - Nav.delta, min(0px, flick.height - flick.content-height), 0px);
+        }
+    }
+
+    flick := Flickable {
         content-width: self.width;
         content-height: lay.preferred-height;
         lay := VerticalLayout {
@@ -1195,6 +1243,14 @@ export component DetailPage inherits Rectangle {
     property <length> top-h: max(460px, root.height * 0.62);
     property <int> cols: max(1, floor((root.width - Theme.gutter * 2 + 18px) / (300px + 18px)));
     property <length> ep-w: (root.width - Theme.gutter * 2 - (cols - 1) * 18px) / cols;
+    // keyboard scrolling (see Nav)
+    property <int> nav-seq: Nav.seq;
+    changed nav-seq => {
+        if (Nav.page == "detail") {
+            flick.content-y = clamp(flick.content-y - Nav.delta, min(0px, flick.height - flick.content-height), 0px);
+        }
+    }
+
     flick := Flickable {
         content-width: self.width;
         content-height: top-h + eps.preferred-height + 80px;
@@ -1325,9 +1381,9 @@ export component DetailPage inherits Rectangle {
             y: top-h;
             width: parent.width;
             spacing: 22px;
-            if seasons.length > 1: Flickable {
+            if seasons.length > 1: HStrip {
                 height: 40px;
-                content-width: season-row.preferred-width + Theme.gutter * 2;
+                content-w: season-row.preferred-width + Theme.gutter * 2;
                 season-row := HorizontalLayout {
                     x: Theme.gutter;
                     spacing: 8px;
@@ -1368,7 +1424,15 @@ export component AccountPage inherits Rectangle {
     in property <string> email;
     callback pick(string);
     callback logout();
-    Flickable {
+    // keyboard scrolling (see Nav)
+    property <int> nav-seq: Nav.seq;
+    changed nav-seq => {
+        if (Nav.page == "account") {
+            flick.content-y = clamp(flick.content-y - Nav.delta, min(0px, flick.height - flick.content-height), 0px);
+        }
+    }
+
+    flick := Flickable {
         content-width: self.width;
         content-height: lay.preferred-height;
         lay := VerticalLayout {

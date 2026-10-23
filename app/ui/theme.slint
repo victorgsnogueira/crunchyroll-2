@@ -81,3 +81,11 @@ export global Icons {
     out property <image> logo: @image-url("../../assets/brand/Crunchyroll_2024.svg");
     out property <image> symbol: @image-url("../../assets/brand/crunchyroll-symbol.svg");
 }
+
+// Keyboard scrolling: the window bumps `seq` with a `delta` (positive = down)
+// and the page named `page` scrolls its main Flickable.
+export global Nav {
+    in-out property <int> seq;
+    in-out property <length> delta;
+    in-out property <string> page;
+}

@@ -5,6 +5,9 @@
 const $ = (id) => document.getElementById(id);
 const video = $("video");
 const host = (msg) => { try { window.ipc.postMessage(JSON.stringify(msg)); } catch (_) {} };
+const log = (m) => host({ type: "log", message: String(m) });
+window.addEventListener("error", (e) => log(`erro JS: ${e.message} @ ${e.filename}:${e.lineno}`));
+window.addEventListener("unhandledrejection", (e) => log(`promise rejeitada: ${e.reason && (e.reason.message || e.reason)}`));
 
 const KEY_SYSTEMS = {
   widevine: ["com.widevine.alpha"],
@@ -132,6 +135,7 @@ async function setupSubtitles() {
   let pick = state.subTrack && subs.find((s) => s.locale === state.subTrack.locale);
   if (!pick && pref) pick = subs.find((s) => s.locale === pref);
   state.subTrack = pick || null;
+  log(`legendas: ${subs.map((x) => x.locale + "/" + x.format).join(", ") || "nenhuma"}; escolhida: ${state.subTrack ? state.subTrack.locale : "nenhuma"}`);
   if (state.subTrack && state.subsOn) await applySubtitle(state.subTrack);
   $("btn-subs").classList.toggle("on", !!(state.subTrack && state.subsOn));
 }
@@ -153,6 +157,12 @@ async function applySubtitle(track) {
       prescaleFactor: 1,
       asyncRender: true,
     });
+    try {
+      state.jassub.addEventListener("ready", () => {
+        log("JASSUB pronto");
+      });
+      state.jassub.addEventListener("error", (e) => log(`JASSUB erro: ${e && (e.message || e.error || e.type)}`));
+    } catch (e) { log(`JASSUB eventos: ${e.message}`); }
   } else {
     await state.player.addTextTrackAsync(url, track.locale, "subtitle", "text/vtt");
     const t = state.player.getTextTracks().find((x) => x.language === track.locale);
@@ -392,7 +402,17 @@ $("error-back").onclick = () => host({ type: "back", pos: 0 });
 $("skip").onclick = doSkip;
 $("nc-play").onclick = () => host({ type: "next" });
 $("nc-cancel").onclick = () => { state.nextDismissed = true; hideNext(); };
+// Clicking the video toggles playback; with a menu open, the first click just closes it.
 $("stage").addEventListener("click", () => { if (state.menu) closeMenu(); else togglePlay(); });
+// Any click outside the menu (and outside the buttons that open it) closes it.
+document.addEventListener("click", (e) => {
+  if (!state.menu) return;
+  if (e.target.closest("#menu, #btn-subs, #btn-settings, #stage")) return;
+  closeMenu();
+}, true);
+// Buttons never keep keyboard focus, so Space/Enter never "re-press" them.
+document.addEventListener("mousedown", (e) => { if (e.target.closest("button")) e.preventDefault(); });
+document.querySelectorAll("button").forEach((b) => b.setAttribute("tabindex", "-1"));
 $("stage").addEventListener("dblclick", () => host({ type: "fullscreen" }));
 
 document.addEventListener("keydown", (e) => {

@@ -323,6 +323,7 @@ impl PlayerCtl {
                     self.open_at(app, a.session, media_id, false, Some(position));
                 }
             }
+            PlayerEvent::Log { message } => tracing::info!("player: {message}"),
             PlayerEvent::Error { message, code } => {
                 app.ui().set_player_loading(false);
                 check_log(&format!("erro do player ({code}): {message}"));

@@ -1,4 +1,4 @@
-import { Theme, Icons } from "theme.slint";
+import { Theme, Icons, Nav } from "theme.slint";
 import { CardData, RowData } from "data.slint";
 
 // Quiet placeholder behind images that are still arriving (near-black, no shimmer).
@@ -435,6 +435,15 @@ export component CardRow inherits Rectangle {
         font-weight: 800;
         font-size: Theme.fs-xl;
     }
+    hscroll := TouchArea {
+        y: title.height + 14px;
+        height: parent.height - self.y;
+        scroll-event(e) => {
+            if (abs(e.delta-x) <= abs(e.delta-y) || content-w <= root.width) { return reject; }
+            flick.content-x = clamp(flick.content-x + e.delta-x, min(0px, root.width - content-w), 0px);
+            accept
+        }
+    }
     flick := Flickable {
         y: title.height + 14px;
         height: parent.height - self.y;
@@ -576,5 +585,53 @@ export component Toast inherits Rectangle {
         font-family: Theme.font;
         font-weight: 700;
         font-size: Theme.fs-sm;
+    }
+}
+
+// Horizontal strip (filters, seasons). Every wheel/touchpad scroll over it moves
+// the strip sideways and never the page; arrows appear at the ends.
+export component HStrip inherits Rectangle {
+    in property <length> content-w;
+    in-out property <length> offset: 0px;
+    property <length> min-offset: min(0px, root.width - root.content-w);
+    property <length> page: max(120px, root.width * 0.7);
+    clip: true;
+    ta := TouchArea {
+        scroll-event(e) => {
+            if (root.content-w <= root.width) { return reject; }
+            root.offset = clamp(root.offset + (abs(e.delta-x) > abs(e.delta-y) ? e.delta-x : e.delta-y), root.min-offset, 0px);
+            accept
+        }
+        Rectangle {
+            x: root.offset;
+            width: root.content-w;
+            height: root.height;
+            animate x { duration: 140ms; easing: Theme.ease; }
+            @children
+        }
+    }
+    if root.offset < 0: Rectangle {
+        x: 0;
+        width: 64px;
+        background: @linear-gradient(90deg, #000000 30%, #00000000 100%);
+        IconButton {
+            x: 4px;
+            size: 34px;
+            icon-size: 22px;
+            icon: Icons.chevron-left;
+            clicked => { root.offset = min(0px, root.offset + root.page); }
+        }
+    }
+    if root.offset > root.min-offset: Rectangle {
+        x: root.width - 64px;
+        width: 64px;
+        background: @linear-gradient(270deg, #000000 30%, #00000000 100%);
+        IconButton {
+            x: parent.width - self.width - 4px;
+            size: 34px;
+            icon-size: 22px;
+            icon: Icons.chevron-right;
+            clicked => { root.offset = max(root.min-offset, root.offset - root.page); }
+        }
     }
 }
