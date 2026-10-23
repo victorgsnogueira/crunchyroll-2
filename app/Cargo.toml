@@ -12,7 +12,7 @@ path = "src/main.rs"
 [dependencies]
 cr-core = { path = "../crates/core" }
 cr-player = { path = "../crates/player" }
-slint = { workspace = true, features = ["raw-window-handle-06"] }
+slint = { workspace = true, features = ["raw-window-handle-06", "unstable-winit-030", "renderer-skia"] }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

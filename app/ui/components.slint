@@ -1,0 +1,565 @@
+import { Theme, Icons } from "theme.slint";
+import { CardData, RowData } from "data.slint";
+
+// Shimmering placeholder used instead of spinners while content loads.
+export component Skeleton inherits Rectangle {
+    in property <length> radius: Theme.radius-sm;
+    border-radius: radius;
+    background: Theme.surface-2;
+    clip: true;
+    Rectangle {
+        width: parent.width * 0.6;
+        x: -self.width + mod(animation-tick() / 1ms, 1600) / 1600 * (parent.width + self.width);
+        background: @linear-gradient(90deg, #ffffff00 0%, #ffffff10 50%, #ffffff00 100%);
+    }
+}
+
+export component Spinner inherits Rectangle {
+    in property <length> size: 44px;
+    width: size;
+    height: size;
+    for i in 3: Rectangle {
+        property <float> phase: mod(animation-tick() / 1ms + i * 160, 960) / 960;
+        x: parent.width / 2 - 18px + i * 14px;
+        y: parent.height / 2 - 4px - (phase < 0.5 ? phase : 1 - phase) * 16px;
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        background: Theme.orange;
+        opacity: 0.45 + (phase < 0.5 ? phase : 1 - phase) * 1.1;
+    }
+}
+
+export component PrimaryButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> has-icon: false;
+    in property <bool> enabled: true;
+    in property <bool> busy: false;
+    callback clicked();
+    height: 44px;
+    min-width: lay.preferred-width;
+    background: !enabled ? Theme.surface-3 : ta.pressed ? Theme.orange-press : ta.has-hover ? Theme.orange-hover : Theme.orange;
+    animate background { duration: Theme.fast; easing: Theme.ease; }
+    lay := HorizontalLayout {
+        padding-left: 20px;
+        padding-right: 22px;
+        spacing: 8px;
+        alignment: center;
+        if has-icon && !busy: Image {
+            source: icon;
+            colorize: #000;
+            width: 18px;
+            y: (parent.height - self.height) / 2;
+            height: 18px;
+        }
+        if busy: Spinner { size: 20px; }
+        Text {
+            text: busy ? "" : root.text;
+            color: enabled ? #000 : Theme.text-2;
+            font-family: Theme.font;
+            font-weight: 900;
+            font-size: Theme.fs-sm;
+            letter-spacing: 0.8px;
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: enabled ? pointer : default;
+        clicked => { if (enabled && !busy) { root.clicked(); } }
+    }
+}
+
+export component GhostButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> has-icon: false;
+    in property <bool> active: false;
+    callback clicked();
+    height: 44px;
+    min-width: lay.preferred-width;
+    border-width: 2px;
+    border-color: active ? Theme.orange : ta.has-hover ? Theme.orange-hover : Theme.orange;
+    background: ta.pressed ? Theme.orange-soft : ta.has-hover ? #FF640A14 : transparent;
+    animate background, border-color { duration: Theme.fast; easing: Theme.ease; }
+    lay := HorizontalLayout {
+        padding-left: 18px;
+        padding-right: 20px;
+        spacing: 8px;
+        alignment: center;
+        if has-icon: Image {
+            source: icon;
+            colorize: Theme.orange;
+            width: 18px;
+            height: 18px;
+            y: (parent.height - self.height) / 2;
+        }
+        Text {
+            text: root.text;
+            color: Theme.orange;
+            font-family: Theme.font;
+            font-weight: 900;
+            font-size: Theme.fs-sm;
+            letter-spacing: 0.8px;
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component IconButton inherits Rectangle {
+    in property <image> icon;
+    in property <length> size: 40px;
+    in property <length> icon-size: 20px;
+    in property <color> tint: Theme.text;
+    in property <color> hover-tint: Theme.orange;
+    in property <bool> round: true;
+    callback clicked();
+    width: size;
+    height: size;
+    border-radius: round ? size / 2 : Theme.radius-sm;
+    background: ta.pressed ? #ffffff26 : ta.has-hover ? #ffffff14 : transparent;
+    animate background { duration: Theme.fast; }
+    Image {
+        source: icon;
+        width: icon-size;
+        height: icon-size;
+        colorize: ta.has-hover ? hover-tint : tint;
+        animate colorize { duration: Theme.fast; }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component Chip inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked();
+    height: 34px;
+    min-width: t.preferred-width + 28px;
+    border-radius: 17px;
+    background: selected ? Theme.text : ta.has-hover ? Theme.surface-3 : Theme.surface-2;
+    animate background { duration: Theme.fast; easing: Theme.ease; }
+    t := Text {
+        text: root.text;
+        color: selected ? #000 : Theme.text;
+        font-family: Theme.font;
+        font-weight: 700;
+        font-size: Theme.fs-sm;
+        animate color { duration: Theme.fast; }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Bottom-line text field in the Crunchyroll sign-in style.
+export component TextField inherits Rectangle {
+    in property <string> label;
+    in property <bool> password: false;
+    in-out property <string> text <=> input.text;
+    out property <bool> focused: input.has-focus;
+    callback accepted();
+    callback edited(string);
+    height: 62px;
+    Text {
+        x: 0;
+        width: parent.width;
+        horizontal-alignment: left;
+        text: label;
+        y: input.has-focus || input.text != "" ? 0px : 26px;
+        font-size: input.has-focus || input.text != "" ? Theme.fs-xs : Theme.fs-md;
+        color: input.has-focus ? Theme.orange : Theme.text-2;
+        font-family: Theme.font;
+        font-weight: 700;
+        animate y, font-size, color { duration: Theme.normal; easing: Theme.ease; }
+    }
+    input := TextInput {
+        x: 0;
+        width: parent.width;
+        y: 22px;
+        height: 32px;
+        color: Theme.text;
+        font-size: Theme.fs-md;
+        font-family: Theme.font;
+        input-type: password ? InputType.password : InputType.text;
+        vertical-alignment: center;
+        selection-background-color: Theme.orange-soft;
+        accepted => { root.accepted(); }
+        edited => { root.edited(self.text); }
+    }
+    Rectangle {
+        y: parent.height - 2px;
+        height: 1px;
+        background: Theme.text-3;
+    }
+    Rectangle {
+        y: parent.height - 2px;
+        height: 2px;
+        x: (parent.width - self.width) / 2;
+        width: input.has-focus ? parent.width : 0px;
+        background: Theme.orange;
+        animate width { duration: Theme.normal; easing: Theme.ease; }
+    }
+    TouchArea {
+        mouse-cursor: MouseCursor.text;
+        clicked => { input.focus(); }
+    }
+    public function focus-input() { input.focus(); }
+}
+
+// Image that fades in when it arrives, with a shimmer underneath.
+export component LazyImage inherits Rectangle {
+    in property <image> source;
+    in property <bool> loaded;
+    in property <length> radius: Theme.radius-sm;
+    in property <float> dim: 1.0;
+    border-radius: radius;
+    clip: true;
+    if !loaded: Skeleton { radius: root.radius; }
+    img := Image {
+        width: parent.width;
+        height: parent.height;
+        source: root.source;
+        image-fit: cover;
+        opacity: loaded ? dim : 0;
+        animate opacity { duration: Theme.slow; easing: Theme.ease; }
+    }
+}
+
+export component PosterCard inherits Rectangle {
+    in property <CardData> data;
+    in property <length> card-width: 190px;
+    callback clicked(CardData);
+    width: card-width;
+    height: card-width * 1.5 + 64px;
+    property <bool> hover: ta.has-hover;
+    poster := Rectangle {
+        y: hover ? -4px : 0px;
+        width: parent.width;
+        height: parent.width * 1.5;
+        border-radius: Theme.radius-sm;
+        drop-shadow-blur: hover ? 24px : 0px;
+        drop-shadow-color: #00000099;
+        drop-shadow-offset-y: 10px;
+        animate y, drop-shadow-blur { duration: Theme.normal; easing: Theme.ease; }
+        LazyImage {
+            source: data.image;
+            loaded: data.has-image;
+            dim: hover ? 0.55 : 1.0;
+        }
+        Rectangle {
+            visible: hover;
+            opacity: hover ? 1 : 0;
+            animate opacity { duration: Theme.normal; }
+            Rectangle {
+                width: 56px;
+                height: 56px;
+                border-radius: 28px;
+                background: Theme.orange;
+                drop-shadow-blur: 16px;
+                drop-shadow-color: #0008;
+                Image {
+                    source: Icons.play;
+                    colorize: #000;
+                    width: 22px;
+                    height: 22px;
+                    x: (parent.width - self.width) / 2 + 2px;
+                }
+            }
+        }
+        if data.badge != "": Rectangle {
+            x: 8px;
+            y: 8px;
+            width: badge.preferred-width + 12px;
+            height: 20px;
+            background: Theme.premium;
+            badge := Text {
+                text: data.badge;
+                color: #000;
+                font-size: 10px;
+                font-weight: 900;
+                letter-spacing: 0.6px;
+            }
+        }
+        Rectangle {
+            y: parent.height - 3px;
+            height: 3px;
+            x: 0;
+            width: hover ? parent.width : 0;
+            background: Theme.orange;
+            animate width { duration: Theme.normal; easing: Theme.ease; }
+        }
+    }
+    Text {
+        y: poster.height + 10px;
+        width: parent.width;
+        text: data.title;
+        color: hover ? Theme.text : #E8E8E8;
+        font-family: Theme.font;
+        font-weight: 700;
+        font-size: Theme.fs-md;
+        overflow: elide;
+    }
+    Text {
+        y: poster.height + 32px;
+        width: parent.width;
+        text: data.subtitle;
+        color: Theme.text-2;
+        font-family: Theme.font;
+        font-size: Theme.fs-sm;
+        overflow: elide;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(data); }
+    }
+}
+
+export component WideCard inherits Rectangle {
+    in property <CardData> data;
+    in property <length> card-width: 300px;
+    callback clicked(CardData);
+    width: card-width;
+    height: card-width * 9 / 16 + 64px;
+    property <bool> hover: ta.has-hover;
+    thumb := Rectangle {
+        y: hover ? -4px : 0px;
+        width: parent.width;
+        height: parent.width * 9 / 16;
+        border-radius: Theme.radius-sm;
+        drop-shadow-blur: hover ? 24px : 0px;
+        drop-shadow-color: #00000099;
+        drop-shadow-offset-y: 10px;
+        animate y, drop-shadow-blur { duration: Theme.normal; easing: Theme.ease; }
+        LazyImage {
+            source: data.image;
+            loaded: data.has-image;
+            dim: hover ? 0.6 : 1.0;
+        }
+        Rectangle {
+            opacity: hover ? 1 : 0;
+            animate opacity { duration: Theme.normal; }
+            Rectangle {
+                width: 52px;
+                height: 52px;
+                border-radius: 26px;
+                background: Theme.orange;
+                Image {
+                    source: Icons.play;
+                    colorize: #000;
+                    width: 20px;
+                    height: 20px;
+                    x: (parent.width - self.width) / 2 + 2px;
+                }
+            }
+        }
+        if data.progress > 0: Rectangle {
+            y: parent.height - 4px;
+            height: 4px;
+            background: #ffffff40;
+            Rectangle {
+                x: 0;
+                width: parent.width * min(1.0, data.progress);
+                background: Theme.orange;
+            }
+        }
+    }
+    Text {
+        y: thumb.height + 10px;
+        width: parent.width;
+        text: data.title;
+        color: hover ? Theme.text : #E8E8E8;
+        font-family: Theme.font;
+        font-weight: 700;
+        font-size: Theme.fs-md;
+        overflow: elide;
+    }
+    Text {
+        y: thumb.height + 32px;
+        width: parent.width;
+        text: data.subtitle;
+        color: Theme.text-2;
+        font-family: Theme.font;
+        font-size: Theme.fs-sm;
+        overflow: elide;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(data); }
+    }
+}
+
+// Horizontal shelf with paging arrows that appear on hover.
+export component CardRow inherits Rectangle {
+    in property <RowData> shelf;
+    in property <length> side: Theme.gutter;
+    callback card-clicked(CardData);
+    property <length> card-w: shelf.wide ? 300px : 190px;
+    property <length> gap: 14px;
+    property <length> content-w: shelf.items.length * (card-w + gap) - gap + side * 2;
+    height: title.height + 14px + (shelf.wide ? card-w * 9 / 16 : card-w * 1.5) + 70px;
+    title := Text {
+        x: side;
+        y: 0;
+        text: shelf.title;
+        color: Theme.text;
+        font-family: Theme.display-font;
+        font-weight: 800;
+        font-size: Theme.fs-xl;
+    }
+    flick := Flickable {
+        y: title.height + 14px;
+        height: parent.height - self.y;
+        content-width: content-w;
+        interactive: false;
+        animate content-x { duration: Theme.slow; easing: Theme.ease-in-out; }
+        for item[i] in shelf.items: Rectangle {
+            x: side + i * (card-w + gap);
+            y: 6px;
+            width: card-w;
+            if !shelf.wide: PosterCard {
+                data: item;
+                card-width: card-w;
+                clicked(d) => { root.card-clicked(d); }
+            }
+            if shelf.wide: WideCard {
+                data: item;
+                card-width: card-w;
+                clicked(d) => { root.card-clicked(d); }
+            }
+        }
+    }
+    hover := TouchArea {
+        y: flick.y;
+        height: flick.height;
+        // passes clicks through: only used for hover detection and wheel
+        enabled: false;
+    }
+    property <length> page: max(card-w, (root.width - side * 2) - card-w);
+    if flick.content-x < 0: arrow-l := Rectangle {
+        x: 0;
+        y: flick.y;
+        width: side;
+        height: (shelf.wide ? card-w * 9 / 16 : card-w * 1.5) + 12px;
+        background: @linear-gradient(90deg, #000000E6 0%, #00000000 100%);
+        IconButton {
+            icon: Icons.chevron-left;
+            size: 40px;
+            icon-size: 26px;
+            clicked => { flick.content-x = min(0px, flick.content-x + page); }
+        }
+    }
+    if -flick.content-x + root.width < content-w: Rectangle {
+        x: root.width - side;
+        y: flick.y;
+        width: side;
+        height: (shelf.wide ? card-w * 9 / 16 : card-w * 1.5) + 12px;
+        background: @linear-gradient(270deg, #000000E6 0%, #00000000 100%);
+        IconButton {
+            icon: Icons.chevron-right;
+            size: 40px;
+            icon-size: 26px;
+            clicked => { flick.content-x = max(root.width - content-w, flick.content-x - page); }
+        }
+    }
+}
+
+export component RowSkeleton inherits Rectangle {
+    in property <bool> wide: false;
+    property <length> card-w: wide ? 300px : 190px;
+    height: 40px + (wide ? card-w * 9 / 16 : card-w * 1.5) + 70px;
+    Skeleton {
+        x: Theme.gutter;
+        y: 4px;
+        width: 220px;
+        height: 22px;
+    }
+    for i in 8: Skeleton {
+        x: Theme.gutter + i * (card-w + 14px);
+        y: 48px;
+        width: card-w;
+        height: wide ? card-w * 9 / 16 : card-w * 1.5;
+    }
+}
+
+export component NavItem inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <bool> active;
+    in property <bool> expanded;
+    callback clicked();
+    height: 48px;
+    border-radius: Theme.radius-md;
+    background: active ? Theme.orange-soft : ta.has-hover ? #ffffff0d : transparent;
+    animate background { duration: Theme.fast; }
+    Rectangle {
+        x: 0;
+        width: 3px;
+        height: active ? 22px : 0px;
+        border-radius: 2px;
+        background: Theme.orange;
+        animate height { duration: Theme.normal; easing: Theme.spring; }
+    }
+    Image {
+        x: 16px;
+        source: icon;
+        width: 22px;
+        height: 22px;
+        colorize: active ? Theme.orange : ta.has-hover ? Theme.text : Theme.text-2;
+        animate colorize { duration: Theme.fast; }
+    }
+    Text {
+        x: 54px;
+        text: label;
+        color: active ? Theme.text : ta.has-hover ? Theme.text : Theme.text-2;
+        font-family: Theme.font;
+        font-weight: active ? 900 : 700;
+        font-size: Theme.fs-md;
+        opacity: expanded ? 1 : 0;
+        animate opacity { duration: Theme.normal; easing: Theme.ease; }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component SectionTitle inherits Text {
+    color: Theme.text;
+    font-family: Theme.display-font;
+    font-weight: 800;
+    font-size: Theme.fs-2xl;
+}
+
+export component Toast inherits Rectangle {
+    in property <string> message;
+    in property <bool> show;
+    width: t.preferred-width + 40px;
+    height: 46px;
+    border-radius: Theme.radius-md;
+    background: Theme.surface-2;
+    drop-shadow-blur: 24px;
+    drop-shadow-color: #000a;
+    opacity: show ? 1 : 0;
+    animate opacity { duration: Theme.normal; easing: Theme.ease; }
+    Rectangle {
+        x: 0;
+        width: 4px;
+        border-radius: 2px;
+        background: Theme.orange;
+    }
+    t := Text {
+        text: message;
+        color: Theme.text;
+        font-family: Theme.font;
+        font-weight: 700;
+        font-size: Theme.fs-sm;
+    }
+}

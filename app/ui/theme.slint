@@ -1,0 +1,81 @@
+// Visual language: Crunchyroll colors, type and one shared set of motion curves.
+import { BrandFonts } from "brand_fonts.slint";
+
+export global Theme {
+    // Brand
+    out property <color> orange: #FF640A;
+    out property <color> orange-hover: #FF7F33;
+    out property <color> orange-press: #E55400;
+    out property <color> orange-soft: #FF640A26;
+
+    // Surfaces (Crunchyroll dark product palette)
+    out property <color> bg: #000000;
+    out property <color> surface-1: #141519;
+    out property <color> surface-2: #23252B;
+    out property <color> surface-3: #2E3038;
+    out property <color> outline: #FFFFFF14;
+    out property <color> scrim: #000000B3;
+
+    // Text
+    out property <color> text: #FFFFFF;
+    out property <color> text-2: #A0A0A0;
+    out property <color> text-3: #6E6E74;
+    out property <color> success: #2ABDBB;
+    out property <color> danger: #FF4A5E;
+    out property <color> premium: #FAB818;
+
+    // Type
+    out property <string> font: "Lato";
+    out property <string> display-font: BrandFonts.display;
+    out property <length> fs-xs: 12px;
+    out property <length> fs-sm: 13px;
+    out property <length> fs-md: 15px;
+    out property <length> fs-lg: 18px;
+    out property <length> fs-xl: 24px;
+    out property <length> fs-2xl: 34px;
+    out property <length> fs-hero: 52px;
+
+    // Shape and spacing
+    out property <length> radius-sm: 4px;
+    out property <length> radius-md: 8px;
+    out property <length> radius-lg: 12px;
+    out property <length> gutter: 48px;
+    out property <length> titlebar-h: 36px;
+    out property <length> sidebar-w: 76px;
+    out property <length> sidebar-w-open: 232px;
+
+    // Motion: every animation in the app uses these.
+    out property <duration> fast: 120ms;
+    out property <duration> normal: 220ms;
+    out property <duration> slow: 420ms;
+    out property <duration> page: 280ms;
+    out property <easing> ease: cubic-bezier(0.2, 0.8, 0.2, 1.0);
+    out property <easing> ease-in-out: cubic-bezier(0.65, 0.0, 0.35, 1.0);
+    out property <easing> spring: cubic-bezier(0.34, 1.56, 0.64, 1.0);
+}
+
+export global Icons {
+    out property <image> home: @image-url("../../assets/icons/home.svg");
+    out property <image> search: @image-url("../../assets/icons/search.svg");
+    out property <image> compass: @image-url("../../assets/icons/compass.svg");
+    out property <image> calendar: @image-url("../../assets/icons/calendar.svg");
+    out property <image> bookmark: @image-url("../../assets/icons/bookmark.svg");
+    out property <image> history: @image-url("../../assets/icons/history.svg");
+    out property <image> play: @image-url("../../assets/icons/play.svg");
+    out property <image> plus: @image-url("../../assets/icons/plus.svg");
+    out property <image> check: @image-url("../../assets/icons/check.svg");
+    out property <image> close: @image-url("../../assets/icons/x.svg");
+    out property <image> chevron-left: @image-url("../../assets/icons/chevron-left.svg");
+    out property <image> chevron-right: @image-url("../../assets/icons/chevron-right.svg");
+    out property <image> chevron-down: @image-url("../../assets/icons/chevron-down.svg");
+    out property <image> logout: @image-url("../../assets/icons/logout.svg");
+    out property <image> minimize: @image-url("../../assets/icons/minimize.svg");
+    out property <image> maximize: @image-url("../../assets/icons/maximize.svg");
+    out property <image> star: @image-url("../../assets/icons/star.svg");
+    out property <image> star-filled: @image-url("../../assets/icons/star-filled.svg");
+    out property <image> lists: @image-url("../../assets/icons/lists.svg");
+    out property <image> user: @image-url("../../assets/icons/user.svg");
+    out property <image> trash: @image-url("../../assets/icons/trash.svg");
+    out property <image> logo: @image-url("../../assets/brand/Crunchyroll_2024.svg");
+    out property <image> symbol: @image-url("../../assets/brand/crunchyroll-symbol.svg");
+}

@@ -437,6 +437,52 @@ impl Session {
         Ok(out)
     }
 
+    /// What "play" means for a series: the episode to continue (or start) with.
+    /// Returns (episode id, button label).
+    pub async fn up_next(&self, series_id: &str) -> Result<Option<(String, String)>> {
+        #[derive(Deserialize)]
+        struct Item {
+            panel: MediaCollection,
+            #[serde(default)]
+            playhead: u32,
+            #[serde(default)]
+            fully_watched: bool,
+        }
+        #[derive(Deserialize)]
+        struct Resp {
+            data: Vec<Item>,
+        }
+        let url = format!("https://www.crunchyroll.com/content/v2/discover/up_next/{series_id}");
+        let resp = self
+            .cr
+            .client()
+            .get(url)
+            .bearer_auth(self.access_token().await)
+            .query(&[("locale", "pt-BR")])
+            .send()
+            .await?;
+        if resp.status().as_u16() == 404 {
+            return Ok(None);
+        }
+        let resp: Resp = resp.error_for_status()?.json().await?;
+        let Some(item) = resp.data.into_iter().next() else { return Ok(None) };
+        Ok(match item.panel {
+            MediaCollection::Episode(e) => {
+                let label = format::episode_label(e.season_number, e.episode_number, &e.episode);
+                let verb = if item.playhead > 0 && !item.fully_watched { "CONTINUAR" } else { "ASSISTIR" };
+                Some((e.id, format!("{verb} {label}")))
+            }
+            MediaCollection::Movie(m) => Some((m.id, "ASSISTIR FILME".into())),
+            _ => None,
+        })
+    }
+
+    /// Fallback when up_next has nothing: first episode of the first season.
+    pub async fn first_episode(&self, season_id: &str) -> Result<Option<(String, String)>> {
+        let eps = self.episodes(season_id).await?;
+        Ok(eps.first().map(|e| (e.id.clone(), format!("ASSISTIR {}", e.label))))
+    }
+
     pub async fn rate(&self, series_id: &str, stars: u8) -> Result<()> {
         use crunchyroll_rs::media::RatingStar;
         let star = match stars {
@@ -488,7 +534,13 @@ impl Session {
         let stream = stream.map_err(|e| anyhow!(stream_error(&e)))?;
         let (playhead, watched) = head.ok().flatten().map(|h| (h.playhead, h.fully_watched)).unwrap_or((0, false));
         let info = build_playback_info(&video, &stream, skip.ok().flatten(), playhead, watched, next);
-        Ok(Playback { video, stream: Some(stream), info, account_id: self.account_id.clone() })
+        Ok(Playback {
+            video,
+            stream: Some(stream),
+            info,
+            account_id: self.account_id.clone(),
+            closed: std::sync::atomic::AtomicBool::new(false),
+        })
     }
 
     /// The DASH manifest with segment URLs pinned to the CDN.
@@ -533,7 +585,7 @@ impl Session {
     }
 
     /// Opens another audio version of the same episode, closing the current stream first.
-    pub async fn switch_audio(&self, current: Playback, version_media_id: &str) -> Result<Playback> {
+    pub async fn switch_audio(&self, current: &Playback, version_media_id: &str) -> Result<Playback> {
         current.close().await;
         self.play(version_media_id).await
     }
@@ -578,6 +630,7 @@ pub struct Playback {
     stream: Option<Stream>,
     pub info: PlaybackInfo,
     account_id: String,
+    closed: std::sync::atomic::AtomicBool,
 }
 
 impl Playback {
@@ -592,8 +645,12 @@ impl Playback {
     }
 
     /// Frees the stream slot on Crunchyroll's side.
-    pub async fn close(mut self) {
-        if let Some(s) = self.stream.take() {
+    /// Frees the stream slot. Safe to call more than once.
+    pub async fn close(&self) {
+        if self.closed.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        if let Some(s) = self.stream.clone() {
             if let Err(e) = s.invalidate().await {
                 tracing::warn!("stream não liberado: {e}");
             }

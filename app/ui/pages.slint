@@ -1,0 +1,1237 @@
+import { Theme, Icons } from "theme.slint";
+import { CardData, RowData, HeroData, SeasonData, EpisodeData, DetailData, ProfileData, CalendarDayData, CalendarItemData, ListData, GenreData } from "data.slint";
+import { Skeleton, Spinner, PrimaryButton, GhostButton, IconButton, Chip, TextField, LazyImage, PosterCard, WideCard, CardRow, RowSkeleton, SectionTitle } from "components.slint";
+
+// ------------------------------------------------------------------ helpers
+
+export component CardGrid inherits Rectangle {
+    in property <[CardData]> items;
+    in property <bool> wide: false;
+    in property <length> side: Theme.gutter;
+    callback card-clicked(CardData);
+    property <length> gap: wide ? 18px : 16px;
+    property <length> min-w: wide ? 280px : 176px;
+    property <int> cols: max(1, floor((root.width - side * 2 + gap) / (min-w + gap)));
+    property <length> card-w: (root.width - side * 2 - (cols - 1) * gap) / cols;
+    property <length> card-h: (wide ? card-w * 9 / 16 : card-w * 1.5) + 70px;
+    height: ceil(items.length / cols) * (card-h + gap);
+    for item[i] in items: Rectangle {
+        x: side + mod(i, cols) * (card-w + gap);
+        y: floor(i / cols) * (card-h + gap);
+        width: card-w;
+        height: card-h;
+        if !wide: PosterCard {
+            data: item;
+            card-width: card-w;
+            clicked(d) => { root.card-clicked(d); }
+        }
+        if wide: WideCard {
+            data: item;
+            card-width: card-w;
+            clicked(d) => { root.card-clicked(d); }
+        }
+    }
+}
+
+export component GridSkeleton inherits Rectangle {
+    in property <bool> wide: false;
+    property <length> gap: 16px;
+    property <length> w: wide ? 280px : 176px;
+    property <int> cols: max(1, floor((root.width - Theme.gutter * 2 + gap) / (w + gap)));
+    height: 2 * ((wide ? w * 9 / 16 : w * 1.5) + 86px);
+    for i in cols * 2: Skeleton {
+        x: Theme.gutter + mod(i, cols) * (w + gap);
+        y: floor(i / cols) * ((wide ? w * 9 / 16 : w * 1.5) + 86px);
+        width: w;
+        height: wide ? w * 9 / 16 : w * 1.5;
+    }
+}
+
+export component EmptyState inherits VerticalLayout {
+    in property <string> title;
+    in property <string> message;
+    alignment: center;
+    spacing: 10px;
+    padding: 60px;
+    Image {
+        source: Icons.symbol;
+        colorize: Theme.surface-3;
+        height: 72px;
+        width: 72px;
+        horizontal-alignment: center;
+    }
+    Text {
+        text: title;
+        color: Theme.text;
+        font-family: Theme.display-font;
+        font-weight: 800;
+        font-size: Theme.fs-xl;
+        horizontal-alignment: center;
+    }
+    Text {
+        text: message;
+        color: Theme.text-2;
+        font-family: Theme.font;
+        font-size: Theme.fs-md;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+}
+
+component PageHeader inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    height: subtitle == "" ? 92px : 116px;
+    SectionTitle {
+        x: Theme.gutter;
+        y: 34px;
+        text: title;
+    }
+    if subtitle != "": Text {
+        x: Theme.gutter;
+        y: 80px;
+        text: subtitle;
+        color: Theme.text-2;
+        font-family: Theme.font;
+        font-size: Theme.fs-md;
+    }
+}
+
+// ------------------------------------------------------------------- splash
+
+export component SplashPage inherits Rectangle {
+    background: Theme.bg;
+    property <float> t: min(1.0, animation-tick() / 900ms);
+    Rectangle {
+        width: 360px;
+        height: 64px;
+        clip: true;
+        Image {
+            source: Icons.logo;
+            height: 62px;
+            width: 62px * 303 / 52;
+            x: (parent.width - self.width) / 2;
+            opacity: t;
+        }
+    }
+    Spinner {
+        y: parent.height / 2 + 80px;
+        opacity: t;
+    }
+}
+
+// -------------------------------------------------------------------- login
+
+export component LoginPage inherits Rectangle {
+    in property <string> error;
+    in property <bool> busy;
+    callback login(string, string);
+    background: Theme.bg;
+
+    // Brand backdrop: soft orange glow + oversized symbol.
+    Rectangle {
+        background: @radial-gradient(circle, #FF640A40 0%, #FF640A10 35%, #00000000 70%);
+        width: parent.width * 1.4;
+        height: parent.height * 1.4;
+        x: parent.width * 0.25;
+        y: -parent.height * 0.35;
+    }
+    Image {
+        source: Icons.symbol;
+        colorize: #FF640A12;
+        width: parent.height * 1.1;
+        height: parent.height * 1.1;
+        x: parent.width - self.width * 0.7;
+        y: parent.height * 0.1;
+        transform-rotation: mod(animation-tick() / 1ms, 240000) / 240000 * 360deg;
+    }
+
+    panel := Rectangle {
+        width: 440px;
+        height: lay.preferred-height;
+        border-radius: Theme.radius-lg;
+        background: #141519F2;
+        drop-shadow-blur: 60px;
+        drop-shadow-color: #000c;
+        lay := VerticalLayout {
+            padding: 44px;
+            spacing: 18px;
+            Rectangle {
+                height: 44px;
+                clip: true;
+                Image {
+                    source: Icons.logo;
+                    height: 40px;
+                    width: 40px * 303 / 52;
+                    x: (parent.width - self.width) / 2;
+                }
+            }
+            Text {
+                text: "Entrar";
+                color: Theme.text;
+                font-family: Theme.display-font;
+                font-weight: 800;
+                font-size: Theme.fs-xl;
+                horizontal-alignment: center;
+            }
+            email := TextField {
+                label: "E-mail";
+                accepted => { pass.focus-input(); }
+            }
+            pass := TextField {
+                label: "Senha";
+                password: true;
+                accepted => { root.login(email.text, pass.text); }
+            }
+            if error != "": Text {
+                text: error;
+                color: Theme.danger;
+                font-family: Theme.font;
+                font-size: Theme.fs-sm;
+                wrap: word-wrap;
+            }
+            Rectangle { height: 4px; }
+            PrimaryButton {
+                text: "ENTRAR";
+                busy: root.busy;
+                enabled: email.text != "" && pass.text != "";
+                clicked => { root.login(email.text, pass.text); }
+            }
+            Text {
+                text: "Seu e-mail e senha vão direto para a Crunchyroll. A sessão fica guardada no Gerenciador de Credenciais do Windows.";
+                color: Theme.text-3;
+                font-family: Theme.font;
+                font-size: Theme.fs-xs;
+                wrap: word-wrap;
+                horizontal-alignment: center;
+            }
+        }
+    }
+    init => { email.focus-input(); }
+}
+
+// ----------------------------------------------------------------- profiles
+
+export component ProfilesPage inherits Rectangle {
+    in property <[ProfileData]> profiles;
+    callback pick(string);
+    background: Theme.bg;
+    VerticalLayout {
+        alignment: center;
+        spacing: 40px;
+        Text {
+            text: "Quem está assistindo?";
+            color: Theme.text;
+            font-family: Theme.display-font;
+            font-weight: 800;
+            font-size: Theme.fs-2xl;
+            horizontal-alignment: center;
+        }
+        HorizontalLayout {
+            alignment: center;
+            spacing: 36px;
+            for p in profiles: Rectangle {
+                width: 150px;
+                height: 196px;
+                property <bool> hover: ta.has-hover;
+                ring := Rectangle {
+                    y: hover ? 0px : 6px;
+                    width: 140px;
+                    height: 140px;
+                    border-radius: 70px;
+                    border-width: hover ? 4px : 0px;
+                    border-color: Theme.orange;
+                    background: Theme.surface-2;
+                    animate y, border-width { duration: Theme.normal; easing: Theme.spring; }
+                    Rectangle {
+                        width: 128px;
+                        height: 128px;
+                        border-radius: 64px;
+                        clip: true;
+                        LazyImage {
+                            source: p.avatar;
+                            loaded: p.has-avatar;
+                            radius: 64px;
+                        }
+                    }
+                }
+                Text {
+                    y: 160px;
+                    text: p.name;
+                    color: hover ? Theme.text : Theme.text-2;
+                    font-family: Theme.font;
+                    font-weight: 700;
+                    font-size: Theme.fs-lg;
+                    horizontal-alignment: center;
+                    width: parent.width;
+                    overflow: elide;
+                }
+                ta := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.pick(p.id); }
+                }
+            }
+        }
+    }
+}
+
+// --------------------------------------------------------------------- home
+
+component Hero inherits Rectangle {
+    in property <[HeroData]> heroes;
+    in-out property <int> index: 0;
+    callback open(string);
+    callback play(string);
+    clip: true;
+    background: Theme.bg;
+    for h[i] in heroes: Rectangle {
+        opacity: i == index ? 1 : 0;
+        animate opacity { duration: 700ms; easing: Theme.ease-in-out; }
+        visible: self.opacity > 0;
+        LazyImage {
+            source: h.image;
+            loaded: h.has-image;
+            radius: 0;
+            width: parent.width;
+            height: parent.height;
+            x: 0;
+        }
+        Rectangle { background: @linear-gradient(90deg, #000000F2 0%, #000000B3 30%, #00000000 65%); }
+        Rectangle { background: @linear-gradient(0deg, #000000 0%, #00000000 45%); }
+        VerticalLayout {
+            x: Theme.gutter;
+            y: parent.height * 0.22;
+            width: min(560px, parent.width * 0.45);
+            height: parent.height * 0.62;
+            spacing: 16px;
+            alignment: start;
+            if h.has-logo: Image {
+                source: h.logo;
+                height: 120px;
+                image-fit: contain;
+                horizontal-alignment: left;
+            }
+            if !h.has-logo: Text {
+                text: h.title;
+                color: Theme.text;
+                font-family: Theme.display-font;
+                font-weight: 800;
+                font-size: Theme.fs-hero;
+                wrap: word-wrap;
+            }
+            Text {
+                text: h.description;
+                color: #E2E2E2;
+                font-family: Theme.font;
+                font-size: Theme.fs-md;
+                wrap: word-wrap;
+                overflow: elide;
+                max-height: 84px;
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: start;
+                PrimaryButton {
+                    text: "ASSISTIR";
+                    icon: Icons.play;
+                    has-icon: true;
+                    clicked => { root.play(h.series-id); }
+                }
+                GhostButton {
+                    text: "DETALHES";
+                    clicked => { root.open(h.series-id); }
+                }
+            }
+        }
+    }
+    // dots
+    HorizontalLayout {
+        x: Theme.gutter;
+        y: parent.height - 120px;
+        height: 6px;
+        spacing: 8px;
+        alignment: start;
+        for h[i] in heroes: Rectangle {
+            width: i == index ? 28px : 8px;
+            height: 6px;
+            border-radius: 3px;
+            background: i == index ? Theme.orange : #ffffff55;
+            animate width, background { duration: Theme.normal; easing: Theme.ease; }
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.index = i; }
+            }
+        }
+    }
+    Timer {
+        interval: 9s;
+        running: heroes.length > 1;
+        triggered => { root.index = mod(root.index + 1, heroes.length); }
+    }
+}
+
+export component HomePage inherits Rectangle {
+    in property <[HeroData]> heroes;
+    in property <[RowData]> rows;
+    in property <bool> loading;
+    callback open(string);
+    callback play(string);
+    callback card-clicked(CardData);
+    property <length> hero-h: max(520px, root.height * 0.72);
+    flick := Flickable {
+        content-width: self.width;
+        content-height: hero-h + col.preferred-height;
+        Hero {
+            width: parent.width;
+            height: hero-h;
+            heroes: root.heroes;
+            open(id) => { root.open(id); }
+            play(id) => { root.play(id); }
+        }
+        if loading && heroes.length == 0: Skeleton {
+            width: parent.width;
+            height: hero-h;
+            radius: 0;
+        }
+        col := VerticalLayout {
+            y: hero-h - 90px;
+            width: parent.width;
+            spacing: 26px;
+            padding-bottom: 60px;
+            if loading && rows.length == 0: RowSkeleton { wide: true; }
+            if loading && rows.length == 0: RowSkeleton { }
+            for r in rows: CardRow {
+                shelf: r;
+                card-clicked(d) => { root.card-clicked(d); }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------ search/browse
+
+export component SearchPage inherits Rectangle {
+    in property <[CardData]> results;
+    in property <[CardData]> popular;
+    in property <bool> loading;
+    in-out property <string> query;
+    callback search(string);
+    callback card-clicked(CardData);
+    flick := Flickable {
+        content-width: self.width;
+        content-height: lay.preferred-height;
+        lay := VerticalLayout {
+            padding-top: 34px;
+            padding-bottom: 60px;
+            spacing: 24px;
+            Rectangle {
+                height: 72px;
+                Rectangle {
+                    x: Theme.gutter;
+                    width: parent.width - Theme.gutter * 2;
+                    height: 64px;
+                    Image {
+                        x: 0;
+                        source: Icons.search;
+                        width: 30px;
+                        height: 30px;
+                        colorize: field.has-focus ? Theme.orange : Theme.text-2;
+                    }
+                    field := TextInput {
+                        x: 48px;
+                        width: parent.width - 48px;
+                        height: 56px;
+                        text <=> root.query;
+                        color: Theme.text;
+                        font-family: Theme.display-font;
+                        font-weight: 800;
+                        font-size: 34px;
+                        vertical-alignment: center;
+                        edited => { root.search(self.text); }
+                    }
+                    if root.query == "": Text {
+                        x: 48px;
+                        text: "Buscar animes, filmes e episódios";
+                        color: Theme.text-3;
+                        font-family: Theme.display-font;
+                        font-weight: 800;
+                        font-size: 34px;
+                    }
+                    Rectangle {
+                        y: parent.height - 2px;
+                        height: 2px;
+                        background: field.has-focus ? Theme.orange : Theme.surface-3;
+                        animate background { duration: Theme.normal; }
+                    }
+                }
+            }
+            if query != "" && !loading && results.length == 0: EmptyState {
+                title: "Nada encontrado";
+                message: "Tente outro nome, ou o título em japonês.";
+            }
+            if loading: GridSkeleton { }
+            if query != "" && !loading: CardGrid {
+                items: results;
+                card-clicked(d) => { root.card-clicked(d); }
+            }
+            if query == "": HorizontalLayout {
+                padding-left: Theme.gutter;
+                Text {
+                    text: "Mais populares";
+                    color: Theme.text;
+                    font-family: Theme.display-font;
+                    font-weight: 800;
+                    font-size: Theme.fs-xl;
+                }
+            }
+            if query == "": CardGrid {
+                items: popular;
+                card-clicked(d) => { root.card-clicked(d); }
+            }
+        }
+    }
+    public function focus-field() { field.focus(); }
+}
+
+export component BrowsePage inherits Rectangle {
+    in property <[CardData]> items;
+    in property <[GenreData]> genres;
+    in property <bool> loading;
+    in-out property <string> sort: "popularity";
+    in-out property <string> genre: "";
+    callback changed(string, string);
+    callback card-clicked(CardData);
+    Flickable {
+        content-width: self.width;
+        content-height: lay.preferred-height;
+        lay := VerticalLayout {
+            padding-bottom: 60px;
+            spacing: 18px;
+            PageHeader { title: "Explorar"; }
+            HorizontalLayout {
+                padding-left: Theme.gutter;
+                spacing: 10px;
+                alignment: start;
+                Chip {
+                    text: "Mais populares";
+                    selected: sort == "popularity";
+                    clicked => { sort = "popularity"; root.changed(sort, genre); }
+                }
+                Chip {
+                    text: "Novidades";
+                    selected: sort == "newly_added";
+                    clicked => { sort = "newly_added"; root.changed(sort, genre); }
+                }
+                Chip {
+                    text: "A–Z";
+                    selected: sort == "alphabetical";
+                    clicked => { sort = "alphabetical"; root.changed(sort, genre); }
+                }
+            }
+            Flickable {
+                height: 40px;
+                content-width: genre-row.preferred-width + Theme.gutter * 2;
+                genre-row := HorizontalLayout {
+                    x: Theme.gutter;
+                    spacing: 8px;
+                    Chip {
+                        text: "Todos os gêneros";
+                        selected: genre == "";
+                        clicked => { genre = ""; root.changed(sort, genre); }
+                    }
+                    for g in genres: Chip {
+                        text: g.label;
+                        selected: genre == g.slug;
+                        clicked => { genre = g.slug; root.changed(sort, genre); }
+                    }
+                }
+            }
+            Rectangle { height: 6px; }
+            if loading: GridSkeleton { }
+            if !loading: CardGrid {
+                items: root.items;
+                card-clicked(d) => { root.card-clicked(d); }
+            }
+        }
+    }
+}
+
+// --------------------------------------------------------------- simulcasts
+
+export component SimulcastPage inherits Rectangle {
+    in property <string> season-title;
+    in property <[CardData]> items;
+    in property <[CalendarDayData]> days;
+    in property <bool> loading;
+    in-out property <int> tab: 0;
+    in-out property <int> day: 0;
+    callback card-clicked(CardData);
+    callback open-episode(string, string);
+    Flickable {
+        content-width: self.width;
+        content-height: lay.preferred-height;
+        lay := VerticalLayout {
+            padding-bottom: 60px;
+            spacing: 18px;
+            PageHeader {
+                title: "Simulcasts";
+                subtitle: season-title == "" ? "Episódios novos logo depois do Japão" : season-title;
+            }
+            HorizontalLayout {
+                padding-left: Theme.gutter;
+                spacing: 10px;
+                alignment: start;
+                Chip {
+                    text: "Temporada atual";
+                    selected: tab == 0;
+                    clicked => { tab = 0; }
+                }
+                Chip {
+                    text: "Calendário da semana";
+                    selected: tab == 1;
+                    clicked => { tab = 1; }
+                }
+            }
+            if loading: GridSkeleton { }
+            if !loading && tab == 0: CardGrid {
+                items: root.items;
+                card-clicked(d) => { root.card-clicked(d); }
+            }
+            if !loading && tab == 1: HorizontalLayout {
+                padding-left: Theme.gutter;
+                spacing: 8px;
+                alignment: start;
+                for d[i] in days: Chip {
+                    text: d.today ? d.label + " · hoje" : d.label;
+                    selected: day == i;
+                    clicked => { day = i; }
+                }
+            }
+            if !loading && tab == 1 && day < days.length: VerticalLayout {
+                padding-left: Theme.gutter;
+                padding-right: Theme.gutter;
+                spacing: 10px;
+                if days[day].items.length == 0: EmptyState {
+                    title: "Sem lançamentos";
+                    message: "Nenhum episódio programado para este dia.";
+                }
+                for it in days[day].items: Rectangle {
+                    height: 96px;
+                    border-radius: Theme.radius-md;
+                    background: ta.has-hover ? Theme.surface-2 : Theme.surface-1;
+                    animate background { duration: Theme.fast; }
+                    HorizontalLayout {
+                        padding: 10px;
+                        spacing: 18px;
+                        Text {
+                            text: it.time;
+                            width: 70px;
+                            color: Theme.orange;
+                            font-family: Theme.font;
+                            font-weight: 900;
+                            font-size: Theme.fs-lg;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+                        LazyImage {
+                            width: 136px;
+                            source: it.thumb;
+                            loaded: it.has-thumb;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 4px;
+                            Text {
+                                text: it.title;
+                                color: Theme.text;
+                                font-family: Theme.font;
+                                font-weight: 700;
+                                font-size: Theme.fs-md;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: it.premium ? it.episode + " · Premium" : it.episode;
+                                color: Theme.text-2;
+                                font-family: Theme.font;
+                                font-size: Theme.fs-sm;
+                            }
+                        }
+                    }
+                    ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.open-episode(it.series-id, it.episode-id); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ my list
+
+export component MyListPage inherits Rectangle {
+    in property <[CardData]> watchlist;
+    in property <[ListData]> lists;
+    in property <[CardData]> list-items;
+    in property <string> open-list-title;
+    in property <bool> loading;
+    in-out property <int> tab: 0;
+    in-out property <string> open-list: "";
+    callback card-clicked(CardData);
+    callback select-list(string);
+    callback create-list(string);
+    callback delete-list(string);
+    Flickable {
+        content-width: self.width;
+        content-height: lay.preferred-height;
+        lay := VerticalLayout {
+            padding-bottom: 60px;
+            spacing: 18px;
+            PageHeader { title: "Minha lista"; }
+            HorizontalLayout {
+                padding-left: Theme.gutter;
+                spacing: 10px;
+                alignment: start;
+                Chip {
+                    text: "Lista de interesse";
+                    selected: tab == 0;
+                    clicked => { tab = 0; }
+                }
+                Chip {
+                    text: "Crunchylists";
+                    selected: tab == 1;
+                    clicked => { tab = 1; open-list = ""; }
+                }
+            }
+            if loading: GridSkeleton { }
+            if !loading && tab == 0 && watchlist.length == 0: EmptyState {
+                title: "Sua lista está vazia";
+                message: "Adicione animes pela página de cada um para acompanhar novos episódios.";
+            }
+            if !loading && tab == 0: CardGrid {
+                items: watchlist;
+                card-clicked(d) => { root.card-clicked(d); }
+            }
+            if !loading && tab == 1 && open-list == "": VerticalLayout {
+                padding-left: Theme.gutter;
+                padding-right: Theme.gutter;
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: start;
+                    new-name := TextField {
+                        width: 320px;
+                        label: "Nome da nova Crunchylist";
+                        accepted => { if (self.text != "") { root.create-list(self.text); self.text = ""; } }
+                    }
+                    PrimaryButton {
+                        y: 14px;
+                        text: "CRIAR";
+                        icon: Icons.plus;
+                        has-icon: true;
+                        enabled: new-name.text != "";
+                        clicked => { root.create-list(new-name.text); new-name.text = ""; }
+                    }
+                }
+                Rectangle { height: 8px; }
+                for l in lists: Rectangle {
+                    height: 72px;
+                    border-radius: Theme.radius-md;
+                    background: lta.has-hover ? Theme.surface-2 : Theme.surface-1;
+                    animate background { duration: Theme.fast; }
+                    lta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.open-list = l.id; root.select-list(l.id); }
+                    }
+                    HorizontalLayout {
+                        padding-left: 20px;
+                        padding-right: 12px;
+                        spacing: 16px;
+                        Image {
+                            source: Icons.lists;
+                            colorize: Theme.orange;
+                            width: 26px;
+                            height: 26px;
+                            y: (parent.height - self.height) / 2;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Text {
+                                text: l.title;
+                                color: Theme.text;
+                                font-family: Theme.font;
+                                font-weight: 700;
+                                font-size: Theme.fs-md;
+                            }
+                            Text {
+                                text: l.count + (l.count == 1 ? " item" : " itens");
+                                color: Theme.text-2;
+                                font-family: Theme.font;
+                                font-size: Theme.fs-sm;
+                            }
+                        }
+                        Rectangle { }
+                        IconButton {
+                            y: (parent.height - self.height) / 2;
+                            icon: Icons.trash;
+                            hover-tint: Theme.danger;
+                            clicked => { root.delete-list(l.id); }
+                        }
+                    }
+                }
+            }
+            if !loading && tab == 1 && open-list != "": VerticalLayout {
+                spacing: 14px;
+                HorizontalLayout {
+                    padding-left: Theme.gutter - 8px;
+                    spacing: 6px;
+                    alignment: start;
+                    IconButton {
+                        icon: Icons.chevron-left;
+                        clicked => { root.open-list = ""; }
+                    }
+                    Text {
+                        text: open-list-title;
+                        color: Theme.text;
+                        font-family: Theme.display-font;
+                        font-weight: 800;
+                        font-size: Theme.fs-xl;
+                        vertical-alignment: center;
+                    }
+                }
+                CardGrid {
+                    items: list-items;
+                    card-clicked(d) => { root.card-clicked(d); }
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ history
+
+export component HistoryPage inherits Rectangle {
+    in property <[CardData]> items;
+    in property <bool> loading;
+    callback card-clicked(CardData);
+    callback clear();
+    property <bool> confirm: false;
+    Flickable {
+        content-width: self.width;
+        content-height: lay.preferred-height;
+        lay := VerticalLayout {
+            padding-bottom: 60px;
+            spacing: 18px;
+            Rectangle {
+                height: 92px;
+                SectionTitle {
+                    x: Theme.gutter;
+                    y: 34px;
+                    text: "Histórico";
+                }
+                if items.length > 0: GhostButton {
+                    x: parent.width - self.width - Theme.gutter;
+                    y: 34px;
+                    text: confirm ? "CONFIRMAR LIMPEZA" : "LIMPAR HISTÓRICO";
+                    icon: Icons.trash;
+                    has-icon: true;
+                    clicked => {
+                        if (confirm) { root.clear(); confirm = false; } else { confirm = true; }
+                    }
+                }
+            }
+            if loading: GridSkeleton { wide: true; }
+            if !loading && items.length == 0: EmptyState {
+                title: "Nada por aqui ainda";
+                message: "Os episódios que você assistir aparecem aqui.";
+            }
+            if !loading: CardGrid {
+                items: root.items;
+                wide: true;
+                card-clicked(d) => { root.card-clicked(d); }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------- detail
+
+component EpisodeCard inherits Rectangle {
+    in property <EpisodeData> ep;
+    callback clicked(string);
+    property <bool> hover: ta.has-hover;
+    height: self.width * 9 / 16 + 96px;
+    thumb := Rectangle {
+        y: hover ? -4px : 0px;
+        height: parent.width * 9 / 16;
+        border-radius: Theme.radius-sm;
+        drop-shadow-blur: hover ? 24px : 0px;
+        drop-shadow-color: #00000099;
+        drop-shadow-offset-y: 10px;
+        animate y, drop-shadow-blur { duration: Theme.normal; easing: Theme.ease; }
+        LazyImage {
+            source: ep.thumb;
+            loaded: ep.has-thumb;
+            dim: hover ? 0.6 : 1.0;
+        }
+        Rectangle {
+            opacity: hover ? 1 : 0;
+            animate opacity { duration: Theme.normal; }
+            Rectangle {
+                width: 52px;
+                height: 52px;
+                border-radius: 26px;
+                background: Theme.orange;
+                Image {
+                    source: Icons.play;
+                    colorize: #000;
+                    width: 20px;
+                    height: 20px;
+                    x: (parent.width - self.width) / 2 + 2px;
+                }
+            }
+        }
+        Rectangle {
+            x: parent.width - self.width - 8px;
+            y: parent.height - self.height - 10px;
+            width: dur.preferred-width + 12px;
+            height: 22px;
+            border-radius: 3px;
+            background: #000000CC;
+            dur := Text {
+                text: ep.duration;
+                color: Theme.text;
+                font-size: Theme.fs-xs;
+                font-weight: 700;
+            }
+        }
+        if ep.premium: Rectangle {
+            x: 8px;
+            y: 8px;
+            width: pt.preferred-width + 12px;
+            height: 20px;
+            background: Theme.premium;
+            pt := Text {
+                text: "PREMIUM";
+                color: #000;
+                font-size: 10px;
+                font-weight: 900;
+            }
+        }
+        if ep.progress > 0: Rectangle {
+            y: parent.height - 4px;
+            height: 4px;
+            background: #ffffff40;
+            Rectangle {
+                x: 0;
+                width: parent.width * min(1.0, ep.progress);
+                background: Theme.orange;
+            }
+        }
+    }
+    Text {
+        y: thumb.height + 12px;
+        width: parent.width;
+        text: ep.label + " - " + ep.title;
+        color: hover ? Theme.orange : Theme.text;
+        font-family: Theme.font;
+        font-weight: 700;
+        font-size: Theme.fs-md;
+        overflow: elide;
+        animate color { duration: Theme.fast; }
+    }
+    Text {
+        y: thumb.height + 36px;
+        width: parent.width;
+        height: 40px;
+        text: ep.description;
+        color: Theme.text-2;
+        font-family: Theme.font;
+        font-size: Theme.fs-sm;
+        wrap: word-wrap;
+        overflow: elide;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(ep.id); }
+    }
+}
+
+export component DetailPage inherits Rectangle {
+    in property <DetailData> detail;
+    in property <[SeasonData]> seasons;
+    in property <[EpisodeData]> episodes;
+    in property <bool> loading;
+    in property <bool> episodes-loading;
+    in-out property <string> season: "";
+    callback play(string);
+    callback toggle-watchlist();
+    callback select-season(string);
+    callback rate(int);
+    callback back();
+    background: Theme.bg;
+    property <length> top-h: max(460px, root.height * 0.62);
+    property <int> cols: max(1, floor((root.width - Theme.gutter * 2 + 18px) / (300px + 18px)));
+    property <length> ep-w: (root.width - Theme.gutter * 2 - (cols - 1) * 18px) / cols;
+    flick := Flickable {
+        content-width: self.width;
+        content-height: top-h + eps.preferred-height + 80px;
+        // backdrop
+        Rectangle {
+            height: top-h;
+            y: 0;
+            LazyImage {
+                source: detail.image;
+                loaded: detail.has-image;
+                radius: 0;
+            }
+            Rectangle { background: @linear-gradient(90deg, #000000F2 0%, #000000A6 40%, #00000033 75%); }
+            Rectangle { background: @linear-gradient(0deg, #000000 0%, #00000000 55%); }
+        }
+        if loading: Rectangle {
+            height: top-h;
+            Spinner { }
+        }
+        if !loading: VerticalLayout {
+            x: Theme.gutter;
+            y: 70px;
+            width: min(720px, root.width * 0.6);
+            height: top-h - 70px;
+            spacing: 14px;
+            alignment: end;
+            padding-bottom: 30px;
+            Text {
+                text: detail.title;
+                color: Theme.text;
+                font-family: Theme.display-font;
+                font-weight: 800;
+                font-size: Theme.fs-hero;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: start;
+                if detail.maturity != "": Rectangle {
+                    width: mt.preferred-width + 12px;
+                    height: 22px;
+                    border-width: 1px;
+                    border-color: Theme.text-2;
+                    border-radius: 3px;
+                    mt := Text {
+                        text: detail.maturity;
+                        color: Theme.text-2;
+                        font-size: Theme.fs-xs;
+                        font-weight: 700;
+                    }
+                }
+                Text {
+                    text: detail.meta;
+                    color: Theme.text-2;
+                    font-family: Theme.font;
+                    font-size: Theme.fs-sm;
+                    vertical-alignment: center;
+                }
+                if detail.rating > 0: HorizontalLayout {
+                    spacing: 2px;
+                    for s in 5: Image {
+                        source: s < round(detail.rating) ? Icons.star-filled : Icons.star;
+                        colorize: Theme.orange;
+                        width: 16px;
+                        height: 16px;
+                        y: 3px;
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.rate(s + 1); }
+                        }
+                    }
+                    Text {
+                        text: "  " + round(detail.rating * 10) / 10 + " (" + detail.rating-count + ")";
+                        color: Theme.text-2;
+                        font-family: Theme.font;
+                        font-size: Theme.fs-sm;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            Text {
+                text: detail.genres;
+                color: Theme.text;
+                font-family: Theme.font;
+                font-weight: 700;
+                font-size: Theme.fs-sm;
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: start;
+                padding-top: 6px;
+                padding-bottom: 6px;
+                PrimaryButton {
+                    text: detail.play-label;
+                    icon: Icons.play;
+                    has-icon: true;
+                    enabled: detail.play-id != "";
+                    clicked => { root.play(detail.play-id); }
+                }
+                GhostButton {
+                    text: detail.in-watchlist ? "NA MINHA LISTA" : "ADICIONAR À LISTA";
+                    icon: detail.in-watchlist ? Icons.check : Icons.bookmark;
+                    has-icon: true;
+                    active: detail.in-watchlist;
+                    clicked => { root.toggle-watchlist(); }
+                }
+            }
+            Text {
+                text: detail.description;
+                color: #DADADA;
+                font-family: Theme.font;
+                font-size: Theme.fs-md;
+                wrap: word-wrap;
+                overflow: elide;
+                max-height: 110px;
+            }
+            Text {
+                text: (detail.audio != "" ? "Áudio: " + detail.audio : "") + (detail.subtitles != "" ? "     Legendas: " + detail.subtitles : "");
+                color: Theme.text-3;
+                font-family: Theme.font;
+                font-size: Theme.fs-xs;
+                wrap: word-wrap;
+                overflow: elide;
+                max-height: 34px;
+            }
+        }
+        eps := VerticalLayout {
+            y: top-h;
+            width: parent.width;
+            spacing: 22px;
+            if seasons.length > 1: Flickable {
+                height: 40px;
+                content-width: season-row.preferred-width + Theme.gutter * 2;
+                season-row := HorizontalLayout {
+                    x: Theme.gutter;
+                    spacing: 8px;
+                    for s in seasons: Chip {
+                        text: s.label;
+                        selected: season == s.id;
+                        clicked => { season = s.id; root.select-season(s.id); }
+                    }
+                }
+            }
+            if episodes-loading: GridSkeleton { wide: true; }
+            if !episodes-loading: Rectangle {
+                height: ceil(episodes.length / cols) * (ep-w * 9 / 16 + 96px + 22px);
+                for e[i] in episodes: EpisodeCard {
+                    x: Theme.gutter + mod(i, cols) * (ep-w + 18px);
+                    y: floor(i / cols) * (ep-w * 9 / 16 + 96px + 22px);
+                    width: ep-w;
+                    ep: e;
+                    clicked(id) => { root.play(id); }
+                }
+            }
+        }
+    }
+    IconButton {
+        x: 18px;
+        y: 18px;
+        icon: Icons.chevron-left;
+        size: 44px;
+        icon-size: 26px;
+        clicked => { root.back(); }
+    }
+}
+
+// ------------------------------------------------------------------ account
+
+export component AccountPage inherits Rectangle {
+    in property <[ProfileData]> profiles;
+    in property <string> email;
+    callback pick(string);
+    callback logout();
+    Flickable {
+        content-width: self.width;
+        content-height: lay.preferred-height;
+        lay := VerticalLayout {
+            padding-bottom: 60px;
+            spacing: 22px;
+            PageHeader {
+                title: "Conta e perfis";
+                subtitle: email;
+            }
+            HorizontalLayout {
+                padding-left: Theme.gutter;
+                Text {
+                    text: "Trocar de perfil";
+                    color: Theme.text;
+                    font-family: Theme.font;
+                    font-weight: 900;
+                    font-size: Theme.fs-lg;
+                }
+            }
+            HorizontalLayout {
+                padding-left: Theme.gutter;
+                spacing: 24px;
+                alignment: start;
+                for p in profiles: Rectangle {
+                    width: 110px;
+                    height: 140px;
+                    property <bool> hover: pta.has-hover;
+                    Rectangle {
+                        y: 0;
+                        width: 96px;
+                        height: 96px;
+                        border-radius: 48px;
+                        border-width: p.selected || hover ? 3px : 0px;
+                        border-color: p.selected ? Theme.orange : Theme.text;
+                        background: Theme.surface-2;
+                        Rectangle {
+                            width: 86px;
+                            height: 86px;
+                            border-radius: 43px;
+                            clip: true;
+                            LazyImage {
+                                source: p.avatar;
+                                loaded: p.has-avatar;
+                                radius: 43px;
+                            }
+                        }
+                    }
+                    Text {
+                        y: 108px;
+                        width: parent.width;
+                        text: p.name;
+                        color: p.selected ? Theme.orange : Theme.text-2;
+                        font-family: Theme.font;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        overflow: elide;
+                    }
+                    pta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.pick(p.id); }
+                    }
+                }
+            }
+            HorizontalLayout {
+                padding-left: Theme.gutter;
+                padding-top: 20px;
+                alignment: start;
+                GhostButton {
+                    text: "SAIR DA CONTA";
+                    icon: Icons.logout;
+                    has-icon: true;
+                    clicked => { root.logout(); }
+                }
+            }
+            HorizontalLayout {
+              padding-left: Theme.gutter;
+              padding-right: Theme.gutter;
+              Text {
+                text: "Atalhos no player: Espaço pausa · ← → 10 s · ↑ ↓ volume · F tela cheia · M mudo · S pular abertura · N próximo · C legendas · D informações técnicas.";
+                color: Theme.text-3;
+                font-family: Theme.font;
+                font-size: Theme.fs-sm;
+                wrap: word-wrap;
+              }
+            }
+        }
+    }
+}

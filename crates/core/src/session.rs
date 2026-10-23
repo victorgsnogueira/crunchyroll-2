@@ -64,6 +64,7 @@ fn builder() -> crunchyroll_rs::auth::CrunchyrollBuilder {
 pub struct Session {
     pub cr: Crunchyroll,
     pub account_id: String,
+    pub email: String,
 }
 
 impl Session {
@@ -95,9 +96,15 @@ impl Session {
         }
     }
 
+    /// Development only: browse the catalog without an account (no playback/lists).
+    pub async fn anonymous() -> std::result::Result<Session, String> {
+        let cr = builder().login_anonymously(device()).await.map_err(|e| friendly_error(&e))?;
+        Ok(Session { cr, account_id: String::new(), email: "visitante (modo de teste)".into() })
+    }
+
     async fn finish(cr: Crunchyroll) -> Result<Session> {
         let account = cr.account().await.context("lendo a conta")?;
-        let s = Session { cr, account_id: account.account_id };
+        let s = Session { cr, account_id: account.account_id, email: account.email };
         s.persist().await;
         Ok(s)
     }

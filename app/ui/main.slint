@@ -1,0 +1,475 @@
+import { Theme, Icons } from "theme.slint";
+import { CardData, RowData, HeroData, SeasonData, EpisodeData, DetailData, ProfileData, CalendarDayData, ListData, GenreData } from "data.slint";
+import { IconButton, NavItem, Toast, Spinner } from "components.slint";
+import { SplashPage, LoginPage, ProfilesPage, HomePage, SearchPage, BrowsePage, SimulcastPage, MyListPage, HistoryPage, DetailPage, AccountPage } from "pages.slint";
+
+export { CardData, RowData, HeroData, SeasonData, EpisodeData, DetailData, ProfileData, CalendarDayData, ListData, GenreData }
+
+component WindowButton inherits Rectangle {
+    in property <image> icon;
+    in property <bool> danger;
+    callback clicked();
+    width: 46px;
+    background: ta.pressed ? (danger ? #C42B1C : #ffffff26) : ta.has-hover ? (danger ? #E81123 : #ffffff14) : transparent;
+    animate background { duration: Theme.fast; }
+    Image {
+        source: icon;
+        width: 14px;
+        height: 14px;
+        colorize: Theme.text;
+    }
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+component TitleBar inherits Rectangle {
+    callback drag();
+    callback minimize();
+    callback maximize();
+    callback close();
+    height: Theme.titlebar-h;
+    background: transparent;
+    TouchArea {
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) { root.drag(); }
+        }
+        double-clicked => { root.maximize(); }
+    }
+    HorizontalLayout {
+        alignment: end;
+        WindowButton {
+            icon: Icons.minimize;
+            clicked => { root.minimize(); }
+        }
+        WindowButton {
+            icon: Icons.maximize;
+            clicked => { root.maximize(); }
+        }
+        WindowButton {
+            icon: Icons.close;
+            danger: true;
+            clicked => { root.close(); }
+        }
+    }
+}
+
+component Sidebar inherits Rectangle {
+    in property <string> page;
+    in property <image> avatar;
+    in property <bool> has-avatar;
+    in property <string> profile-name;
+    callback navigate(string);
+    property <bool> open: hover.has-hover;
+    width: open ? Theme.sidebar-w-open : Theme.sidebar-w;
+    animate width { duration: Theme.normal; easing: Theme.ease; }
+    background: Theme.surface-1;
+    drop-shadow-blur: open ? 40px : 0px;
+    drop-shadow-color: #000000cc;
+    animate drop-shadow-blur { duration: Theme.normal; }
+    clip: true;
+    hover := TouchArea {
+        // hover detection only; children handle clicks
+    }
+    // Logo: symbol when closed, full wordmark when open.
+    Rectangle {
+        x: 20px;
+        y: 22px;
+        width: open ? 160px : 36px;
+        height: 36px;
+        clip: true;
+        animate width { duration: Theme.normal; easing: Theme.ease; }
+        Image {
+            x: 0;
+            source: Icons.logo;
+            height: 36px;
+            width: 36px * 303 / 52;
+        }
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.navigate("home"); }
+        }
+    }
+    VerticalLayout {
+        y: 96px;
+        height: parent.height - 96px;
+        padding-left: 14px;
+        padding-right: 14px;
+        padding-bottom: 18px;
+        spacing: 6px;
+        NavItem {
+            icon: Icons.home;
+            label: "Início";
+            active: page == "home";
+            expanded: open;
+            clicked => { root.navigate("home"); }
+        }
+        NavItem {
+            icon: Icons.search;
+            label: "Buscar";
+            active: page == "search";
+            expanded: open;
+            clicked => { root.navigate("search"); }
+        }
+        NavItem {
+            icon: Icons.compass;
+            label: "Explorar";
+            active: page == "browse";
+            expanded: open;
+            clicked => { root.navigate("browse"); }
+        }
+        NavItem {
+            icon: Icons.calendar;
+            label: "Simulcasts";
+            active: page == "simulcast";
+            expanded: open;
+            clicked => { root.navigate("simulcast"); }
+        }
+        NavItem {
+            icon: Icons.bookmark;
+            label: "Minha lista";
+            active: page == "mylist";
+            expanded: open;
+            clicked => { root.navigate("mylist"); }
+        }
+        NavItem {
+            icon: Icons.history;
+            label: "Histórico";
+            active: page == "history";
+            expanded: open;
+            clicked => { root.navigate("history"); }
+        }
+        Rectangle { vertical-stretch: 1; }
+        // profile
+        Rectangle {
+            height: 56px;
+            border-radius: Theme.radius-md;
+            background: pa.has-hover || page == "account" ? #ffffff0d : transparent;
+            animate background { duration: Theme.fast; }
+            Rectangle {
+                x: 8px;
+                width: 32px;
+                height: 32px;
+                border-radius: 16px;
+                clip: true;
+                background: Theme.surface-3;
+                border-width: page == "account" ? 2px : 0px;
+                border-color: Theme.orange;
+                if has-avatar: Image {
+                    source: avatar;
+                    width: 32px;
+                    height: 32px;
+                    image-fit: cover;
+                }
+                if !has-avatar: Image {
+                    source: Icons.user;
+                    width: 18px;
+                    height: 18px;
+                    colorize: Theme.text-2;
+                }
+            }
+            Text {
+                x: 54px;
+                text: profile-name;
+                color: Theme.text;
+                font-family: Theme.font;
+                font-weight: 700;
+                font-size: Theme.fs-md;
+                opacity: open ? 1 : 0;
+                animate opacity { duration: Theme.normal; }
+                overflow: elide;
+                width: parent.width - 60px;
+            }
+            pa := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.navigate("account"); }
+            }
+        }
+    }
+}
+
+// Page wrapper: fades and slides in when it becomes the active page.
+component PageSlot inherits Rectangle {
+    in property <bool> active;
+    opacity: active ? 1 : 0;
+    y: active ? 0px : 18px;
+    animate opacity { duration: Theme.page; easing: Theme.ease; }
+    animate y { duration: Theme.page; easing: Theme.ease; }
+    visible: self.opacity > 0.01;
+}
+
+
+// Resize handles for the frameless window.
+component ResizeEdge inherits TouchArea {
+    in property <string> dir;
+    callback resize(string);
+    pointer-event(e) => {
+        if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) { root.resize(dir); }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Crunchyroll";
+    icon: @image-url("../../assets/brand/crunchyroll-icon.svg");
+    no-frame: true;
+    background: Theme.bg;
+    min-width: 1100px;
+    min-height: 680px;
+    preferred-width: 1440px;
+    preferred-height: 900px;
+    default-font-family: Theme.font;
+
+    // ---- state
+    in-out property <string> screen: "splash"; // splash | login | profiles | main | player
+    in-out property <string> page: "home";
+    in property <bool> fullscreen;
+    in property <string> toast-message;
+    in property <bool> toast-visible;
+
+    // login / profiles
+    in property <string> login-error;
+    in property <bool> login-busy;
+    in property <[ProfileData]> profiles;
+    in property <string> profile-name;
+    in property <image> profile-avatar;
+    in property <bool> profile-has-avatar;
+    in property <string> account-email;
+
+    // home
+    in property <[HeroData]> heroes;
+    in property <[RowData]> rows;
+    in property <bool> home-loading: true;
+    in-out property <int> hero-index;
+
+    // search / browse
+    in-out property <string> search-query;
+    in property <[CardData]> search-results;
+    in property <[CardData]> popular;
+    in property <bool> search-loading;
+    in property <[CardData]> browse-items;
+    in property <[GenreData]> genres;
+    in property <bool> browse-loading;
+
+    // simulcast
+    in property <string> simulcast-title;
+    in property <[CardData]> simulcast-items;
+    in property <[CalendarDayData]> calendar;
+    in property <bool> simulcast-loading;
+    in-out property <int> calendar-day;
+
+    // lists
+    in property <[CardData]> watchlist;
+    in property <[ListData]> crunchylists;
+    in property <[CardData]> crunchylist-items;
+    in property <string> crunchylist-title;
+    in property <bool> mylist-loading;
+    in property <[CardData]> history;
+    in property <bool> history-loading;
+
+    // detail
+    in property <DetailData> detail;
+    in property <[SeasonData]> seasons;
+    in-out property <string> season;
+    in property <[EpisodeData]> episodes;
+    in property <bool> detail-loading;
+    in property <bool> episodes-loading;
+    in property <bool> detail-open;
+
+    // player
+    in property <bool> player-loading;
+
+    // ---- callbacks
+    callback login(string, string);
+    callback pick-profile(string);
+    callback logout();
+    callback navigate(string);
+    callback open-media(string);
+    callback card-clicked(CardData);
+    callback play(string);
+    callback close-detail();
+    callback toggle-watchlist();
+    callback select-season(string);
+    callback rate(int);
+    callback search(string);
+    callback browse(string, string);
+    callback open-episode(string, string);
+    callback select-list(string);
+    callback create-list(string);
+    callback delete-list(string);
+    callback clear-history();
+    callback window-drag();
+    callback window-minimize();
+    callback window-maximize();
+    callback window-close();
+    callback window-resize(string);
+    callback key-escape();
+
+    forward-focus: keys;
+    keys := FocusScope {
+        key-pressed(e) => {
+            if (e.text == Key.Escape) { root.key-escape(); return accept; }
+            reject
+        }
+    }
+
+    // ---- screens
+    if screen == "splash": SplashPage { }
+
+    if screen == "login": LoginPage {
+        error: root.login-error;
+        busy: root.login-busy;
+        login(e, p) => { root.login(e, p); }
+    }
+
+    if screen == "profiles": ProfilesPage {
+        profiles: root.profiles;
+        pick(id) => { root.pick-profile(id); }
+    }
+
+    main := Rectangle {
+        visible: screen == "main";
+        sidebar-space := Rectangle {
+            x: Theme.sidebar-w;
+            width: parent.width - Theme.sidebar-w;
+            clip: true;
+            PageSlot {
+                active: page == "home" && !detail-open;
+                HomePage {
+                    heroes: root.heroes;
+                    rows: root.rows;
+                    loading: root.home-loading;
+                    open(id) => { root.open-media(id); }
+                    play(id) => { root.play(id); }
+                    card-clicked(d) => { root.card-clicked(d); }
+                }
+            }
+            PageSlot {
+                active: page == "search" && !detail-open;
+                search-page := SearchPage {
+                    query <=> root.search-query;
+                    results: root.search-results;
+                    popular: root.popular;
+                    loading: root.search-loading;
+                    search(q) => { root.search(q); }
+                    card-clicked(d) => { root.card-clicked(d); }
+                }
+            }
+            PageSlot {
+                active: page == "browse" && !detail-open;
+                BrowsePage {
+                    items: root.browse-items;
+                    genres: root.genres;
+                    loading: root.browse-loading;
+                    changed(s, g) => { root.browse(s, g); }
+                    card-clicked(d) => { root.card-clicked(d); }
+                }
+            }
+            PageSlot {
+                active: page == "simulcast" && !detail-open;
+                SimulcastPage {
+                    season-title: root.simulcast-title;
+                    items: root.simulcast-items;
+                    days: root.calendar;
+                    day <=> root.calendar-day;
+                    loading: root.simulcast-loading;
+                    card-clicked(d) => { root.card-clicked(d); }
+                    open-episode(s, e) => { root.open-episode(s, e); }
+                }
+            }
+            PageSlot {
+                active: page == "mylist" && !detail-open;
+                MyListPage {
+                    watchlist: root.watchlist;
+                    lists: root.crunchylists;
+                    list-items: root.crunchylist-items;
+                    open-list-title: root.crunchylist-title;
+                    loading: root.mylist-loading;
+                    card-clicked(d) => { root.card-clicked(d); }
+                    select-list(id) => { root.select-list(id); }
+                    create-list(n) => { root.create-list(n); }
+                    delete-list(id) => { root.delete-list(id); }
+                }
+            }
+            PageSlot {
+                active: page == "history" && !detail-open;
+                HistoryPage {
+                    items: root.history;
+                    loading: root.history-loading;
+                    card-clicked(d) => { root.card-clicked(d); }
+                    clear => { root.clear-history(); }
+                }
+            }
+            PageSlot {
+                active: page == "account" && !detail-open;
+                AccountPage {
+                    profiles: root.profiles;
+                    email: root.account-email;
+                    pick(id) => { root.pick-profile(id); }
+                    logout => { root.logout(); }
+                }
+            }
+            PageSlot {
+                active: detail-open;
+                DetailPage {
+                    detail: root.detail;
+                    seasons: root.seasons;
+                    season <=> root.season;
+                    episodes: root.episodes;
+                    loading: root.detail-loading;
+                    episodes-loading: root.episodes-loading;
+                    play(id) => { root.play(id); }
+                    toggle-watchlist => { root.toggle-watchlist(); }
+                    select-season(id) => { root.select-season(id); }
+                    rate(s) => { root.rate(s); }
+                    back => { root.close-detail(); }
+                }
+            }
+        }
+        Sidebar {
+            x: 0;
+            height: parent.height;
+            page: detail-open ? "" : root.page;
+            avatar: root.profile-avatar;
+            has-avatar: root.profile-has-avatar;
+            profile-name: root.profile-name;
+            navigate(p) => { root.navigate(p); }
+        }
+    }
+
+    // The WebView2 player is drawn by Windows on top of this area.
+    if screen == "player": Rectangle {
+        y: fullscreen ? 0px : Theme.titlebar-h;
+        background: #000;
+        if player-loading: Spinner { }
+    }
+
+    if !fullscreen: TitleBar {
+        y: 0;
+        width: parent.width;
+        drag => { root.window-drag(); }
+        minimize => { root.window-minimize(); }
+        maximize => { root.window-maximize(); }
+        close => { root.window-close(); }
+    }
+
+    if !fullscreen && !root.maximized: Rectangle {
+        property <length> e: 6px;
+        ResizeEdge { dir: "n"; x: e; y: 0; width: parent.width - 2 * e; height: e; mouse-cursor: ns-resize; resize(d) => { root.window-resize(d); } }
+        ResizeEdge { dir: "s"; x: e; y: parent.height - e; width: parent.width - 2 * e; height: e; mouse-cursor: ns-resize; resize(d) => { root.window-resize(d); } }
+        ResizeEdge { dir: "w"; x: 0; y: e; width: e; height: parent.height - 2 * e; mouse-cursor: ew-resize; resize(d) => { root.window-resize(d); } }
+        ResizeEdge { dir: "e"; x: parent.width - e; y: e; width: e; height: parent.height - 2 * e; mouse-cursor: ew-resize; resize(d) => { root.window-resize(d); } }
+        ResizeEdge { dir: "nw"; x: 0; y: 0; width: e; height: e; mouse-cursor: nwse-resize; resize(d) => { root.window-resize(d); } }
+        ResizeEdge { dir: "se"; x: parent.width - e; y: parent.height - e; width: e; height: e; mouse-cursor: nwse-resize; resize(d) => { root.window-resize(d); } }
+        ResizeEdge { dir: "ne"; x: parent.width - e; y: 0; width: e; height: e; mouse-cursor: nesw-resize; resize(d) => { root.window-resize(d); } }
+        ResizeEdge { dir: "sw"; x: 0; y: parent.height - e; width: e; height: e; mouse-cursor: nesw-resize; resize(d) => { root.window-resize(d); } }
+    }
+
+    Toast {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - self.height - 32px;
+        message: root.toast-message;
+        show: root.toast-visible;
+    }
+
+    public function focus-search() { search-page.focus-field(); }
+}

@@ -1,0 +1,103 @@
+// Data shapes shared between Rust and the UI.
+
+export struct CardData {
+    id: string,
+    kind: int, // 0 series, 1 movie, 2 episode
+    title: string,
+    subtitle: string,
+    image: image,
+    has-image: bool,
+    progress: float,
+    badge: string,
+    parent-id: string,
+}
+
+export struct RowData {
+    title: string,
+    wide: bool,
+    items: [CardData],
+}
+
+export struct HeroData {
+    series-id: string,
+    title: string,
+    description: string,
+    image: image,
+    has-image: bool,
+    logo: image,
+    has-logo: bool,
+}
+
+export struct SeasonData {
+    id: string,
+    label: string,
+}
+
+export struct EpisodeData {
+    id: string,
+    label: string,
+    title: string,
+    description: string,
+    duration: string,
+    thumb: image,
+    has-thumb: bool,
+    progress: float,
+    premium: bool,
+}
+
+export struct DetailData {
+    id: string,
+    title: string,
+    description: string,
+    image: image,
+    has-image: bool,
+    poster: image,
+    has-poster: bool,
+    meta: string,
+    genres: string,
+    audio: string,
+    subtitles: string,
+    maturity: string,
+    in-watchlist: bool,
+    rating: float,
+    rating-count: int,
+    is-movie: bool,
+    play-label: string,
+    play-id: string,
+}
+
+export struct ProfileData {
+    id: string,
+    name: string,
+    avatar: image,
+    has-avatar: bool,
+    selected: bool,
+}
+
+export struct CalendarItemData {
+    series-id: string,
+    episode-id: string,
+    title: string,
+    episode: string,
+    time: string,
+    thumb: image,
+    has-thumb: bool,
+    premium: bool,
+}
+
+export struct CalendarDayData {
+    label: string,
+    today: bool,
+    items: [CalendarItemData],
+}
+
+export struct ListData {
+    id: string,
+    title: string,
+    count: int,
+}
+
+export struct GenreData {
+    slug: string,
+    label: string,
+}
