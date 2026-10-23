@@ -47,12 +47,52 @@ pub fn device_id() -> String {
     id
 }
 
-fn device() -> DeviceIdentifier {
+/// Which official app identity the session uses. Refresh tokens only work with
+/// the identity that created them, so it is saved next to the session.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Platform {
+    Tv,
+    Phone,
+}
+
+fn saved_platform() -> Platform {
+    match std::fs::read_to_string(data_dir().join("platform")).as_deref().map(str::trim) {
+        Ok("phone") => Platform::Phone,
+        _ => Platform::Tv,
+    }
+}
+
+fn save_platform(p: Platform) {
+    let _ = std::fs::create_dir_all(data_dir());
+    let _ = std::fs::write(data_dir().join("platform"), if p == Platform::Phone { "phone" } else { "tv" });
+}
+
+fn device(p: Platform) -> DeviceIdentifier {
     DeviceIdentifier {
         device_id: device_id(),
-        device_type: "ANDROIDTV".into(),
+        device_type: match p {
+            Platform::Tv => "ANDROIDTV".into(),
+            Platform::Phone => "SM-G980F".into(),
+        },
         device_name: Some("Crunchyroll Desktop".into()),
     }
+}
+
+async fn builder_for(p: Platform) -> crunchyroll_rs::auth::CrunchyrollBuilder {
+    let b = Crunchyroll::builder().locale(Locale::pt_BR).preferred_audio_locale(Locale::ja_JP);
+    if p == Platform::Phone {
+        match crunchyroll_rs::auth::platform_credentials::get_platform_credentials().await {
+            Ok(c) => {
+                return b.platform(
+                    crunchyroll_rs::auth::DevicePlatform::AndroidPhone,
+                    c.android_phone.basic_auth_token.clone(),
+                    Some(c.android_phone_user_agent()),
+                );
+            }
+            Err(e) => tracing::warn!("credenciais do app de celular indisponíveis: {e}"),
+        }
+    }
+    b
 }
 
 fn builder() -> crunchyroll_rs::auth::CrunchyrollBuilder {
@@ -69,11 +109,22 @@ pub struct Session {
 
 impl Session {
     pub async fn login(email: &str, password: &str) -> std::result::Result<Session, String> {
-        let cr = builder()
-            .login_with_credentials(email, password, device())
-            .await
-            .map_err(|e| friendly_error(&e))?;
-        Self::finish(cr).await.map_err(|e| format!("{e:#}"))
+        let mut first_err = None;
+        for p in [Platform::Tv, Platform::Phone] {
+            match builder_for(p).await.login_with_credentials(email, password, device(p)).await {
+                Ok(cr) => {
+                    tracing::info!("login ok ({p:?})");
+                    save_platform(p);
+                    return Self::finish(cr).await.map_err(|e| format!("{e:#}"));
+                }
+                Err(e) => {
+                    // never logs the password; the error text comes from the server
+                    tracing::warn!("login falhou ({p:?}): {:?} {e}", e.kind());
+                    first_err.get_or_insert(e);
+                }
+            }
+        }
+        Err(friendly_error(&first_err.expect("ao menos uma tentativa")))
     }
 
     /// Logs in with the saved refresh token, if there is one.
@@ -81,8 +132,13 @@ impl Session {
         let token = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).ok()?.get_password().ok()?;
         let profile = std::fs::read_to_string(data_dir().join("profile_id")).ok();
         let result = match profile.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
-            Some(p) => builder().login_with_refresh_token_profile_id(token.as_str(), p, device()).await,
-            None => builder().login_with_refresh_token(&token, device()).await,
+            Some(p) => {
+                builder_for(saved_platform())
+                    .await
+                    .login_with_refresh_token_profile_id(token.as_str(), p, device(saved_platform()))
+                    .await
+            }
+            None => builder_for(saved_platform()).await.login_with_refresh_token(&token, device(saved_platform())).await,
         };
         match result {
             Ok(cr) => Self::finish(cr).await.ok(),
@@ -98,7 +154,7 @@ impl Session {
 
     /// Development only: browse the catalog without an account (no playback/lists).
     pub async fn anonymous() -> std::result::Result<Session, String> {
-        let cr = builder().login_anonymously(device()).await.map_err(|e| friendly_error(&e))?;
+        let cr = builder().login_anonymously(device(Platform::Tv)).await.map_err(|e| friendly_error(&e))?;
         Ok(Session { cr, account_id: String::new(), email: "visitante (modo de teste)".into() })
     }
 
@@ -138,8 +194,9 @@ impl Session {
         let SessionToken::RefreshToken(token) = self.cr.session_token().await else {
             anyhow::bail!("sessão sem refresh token");
         };
-        let cr = builder()
-            .login_with_refresh_token_profile_id(token.as_str(), profile_id, device())
+        let cr = builder_for(saved_platform())
+            .await
+            .login_with_refresh_token_profile_id(token.as_str(), profile_id, device(saved_platform()))
             .await
             .map_err(|e| anyhow::anyhow!(friendly_error(&e)))?;
         let _ = std::fs::create_dir_all(data_dir());
